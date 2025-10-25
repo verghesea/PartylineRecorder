@@ -11,6 +11,7 @@ export const recordings = pgTable("recordings", {
   objectPath: text("object_path").notNull(), // Path in object storage
   duration: integer("duration"), // Duration in seconds
   participants: integer("participants").default(0), // Number of participants
+  archived: integer("archived").default(0).notNull(), // Soft delete flag (0=active, 1=archived)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

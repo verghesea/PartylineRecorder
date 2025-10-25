@@ -8,9 +8,11 @@ export interface IStorage {
   // Recording methods
   getRecording(id: string): Promise<Recording | undefined>;
   getRecordingByRecordingSid(recordingSid: string): Promise<Recording | undefined>;
-  getAllRecordings(): Promise<Recording[]>;
+  getAllRecordings(includeArchived?: boolean): Promise<Recording[]>;
   createRecording(recording: InsertRecording): Promise<Recording>;
   updateRecordingParticipants(recordingSid: string, participants: number): Promise<void>;
+  archiveRecording(id: string): Promise<void>;
+  unarchiveRecording(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -30,8 +32,9 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async getAllRecordings(): Promise<Recording[]> {
+  async getAllRecordings(includeArchived = false): Promise<Recording[]> {
     return Array.from(this.recordings.values())
+      .filter(r => includeArchived || r.archived === 0)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
@@ -44,6 +47,7 @@ export class MemStorage implements IStorage {
       objectPath: insertRecording.objectPath,
       duration: insertRecording.duration ?? null,
       participants: insertRecording.participants ?? null,
+      archived: 0,
       createdAt: new Date(),
     };
     this.recordings.set(id, recording);
@@ -55,6 +59,22 @@ export class MemStorage implements IStorage {
     if (recording) {
       recording.participants = participants;
       this.recordings.set(recording.id, recording);
+    }
+  }
+
+  async archiveRecording(id: string): Promise<void> {
+    const recording = await this.getRecording(id);
+    if (recording) {
+      recording.archived = 1;
+      this.recordings.set(id, recording);
+    }
+  }
+
+  async unarchiveRecording(id: string): Promise<void> {
+    const recording = await this.getRecording(id);
+    if (recording) {
+      recording.archived = 0;
+      this.recordings.set(id, recording);
     }
   }
 }
@@ -85,10 +105,17 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async getAllRecordings(): Promise<Recording[]> {
+  async getAllRecordings(includeArchived = false): Promise<Recording[]> {
+    if (includeArchived) {
+      return await this.db
+        .select()
+        .from(recordings)
+        .orderBy(desc(recordings.createdAt));
+    }
     return await this.db
       .select()
       .from(recordings)
+      .where(eq(recordings.archived, 0))
       .orderBy(desc(recordings.createdAt));
   }
 
@@ -105,6 +132,20 @@ export class DbStorage implements IStorage {
       .update(recordings)
       .set({ participants })
       .where(eq(recordings.recordingSid, recordingSid));
+  }
+
+  async archiveRecording(id: string): Promise<void> {
+    await this.db
+      .update(recordings)
+      .set({ archived: 1 })
+      .where(eq(recordings.id, id));
+  }
+
+  async unarchiveRecording(id: string): Promise<void> {
+    await this.db
+      .update(recordings)
+      .set({ archived: 0 })
+      .where(eq(recordings.id, id));
   }
 }
 

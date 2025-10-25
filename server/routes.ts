@@ -19,13 +19,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
 
   // GET /api/recordings - List all recordings
-  app.get("/api/recordings", async (_req, res) => {
+  app.get("/api/recordings", async (req, res) => {
     try {
-      const recordings = await storage.getAllRecordings();
+      const includeArchived = req.query.includeArchived === 'true';
+      const recordings = await storage.getAllRecordings(includeArchived);
       res.json(recordings);
     } catch (error) {
       console.error("Error fetching recordings:", error);
       res.status(500).json({ error: "Failed to fetch recordings" });
+    }
+  });
+
+  // POST /api/recordings/:id/archive - Archive a recording
+  app.post("/api/recordings/:id/archive", async (req, res) => {
+    try {
+      await storage.archiveRecording(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error archiving recording:", error);
+      res.status(500).json({ error: "Failed to archive recording" });
+    }
+  });
+
+  // POST /api/recordings/:id/unarchive - Unarchive a recording
+  app.post("/api/recordings/:id/unarchive", async (req, res) => {
+    try {
+      await storage.unarchiveRecording(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error unarchiving recording:", error);
+      res.status(500).json({ error: "Failed to unarchive recording" });
     }
   });
 

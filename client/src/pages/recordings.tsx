@@ -1,16 +1,34 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Recording } from "@shared/schema";
-import { Clock, Users, Download, Play, Pause, Phone, Search, ChevronDown } from "lucide-react";
+import { Clock, Users, Download, Play, Pause, Phone, Search, ChevronDown, Archive, ArchiveRestore, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { format, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 export default function RecordingsPage() {
+  const [showArchived, setShowArchived] = useState(false);
   const { data: recordings, isLoading } = useQuery<Recording[]>({
-    queryKey: ["/api/recordings"],
+    queryKey: ["/api/recordings", { includeArchived: showArchived }],
+    queryFn: async () => {
+      const url = showArchived ? '/api/recordings?includeArchived=true' : '/api/recordings';
+      const response = await fetch(url);
+      return response.json();
+    },
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -18,6 +36,35 @@ export default function RecordingsPage() {
   const [audioElements] = useState<Map<string, HTMLAudioElement>>(new Map());
   const [currentTime, setCurrentTime] = useState<Record<string, number>>({});
   const [duration, setDuration] = useState<Record<string, number>>({});
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [recordingToArchive, setRecordingToArchive] = useState<Recording | null>(null);
+  const { toast } = useToast();
+
+  const archiveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest('POST', `/api/recordings/${id}/archive`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recordings"] });
+      toast({
+        title: "Recording archived",
+        description: "The recording has been archived successfully.",
+      });
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest('POST', `/api/recordings/${id}/unarchive`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recordings"] });
+      toast({
+        title: "Recording restored",
+        description: "The recording has been restored successfully.",
+      });
+    },
+  });
 
   const filteredRecordings = recordings?.filter((r) => {
     if (!searchQuery) return true;
@@ -70,6 +117,23 @@ export default function RecordingsPage() {
       audio.currentTime = time;
       setCurrentTime(prev => ({ ...prev, [recordingId]: time }));
     }
+  };
+
+  const handleArchiveClick = (recording: Recording) => {
+    setRecordingToArchive(recording);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleConfirmArchive = () => {
+    if (recordingToArchive) {
+      archiveMutation.mutate(recordingToArchive.id);
+    }
+    setArchiveDialogOpen(false);
+    setRecordingToArchive(null);
+  };
+
+  const handleUnarchive = (id: string) => {
+    unarchiveMutation.mutate(id);
   };
 
   if (isLoading) {
@@ -149,9 +213,21 @@ export default function RecordingsPage() {
                 data-testid="input-search"
               />
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span data-testid="text-sort-label">Newest first</span>
-              <ChevronDown className="h-4 w-4" data-testid="icon-sort" />
+            <div className="flex items-center gap-4">
+              <Button
+                variant={showArchived ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowArchived(!showArchived)}
+                className="gap-2"
+                data-testid="button-toggle-archived"
+              >
+                <Archive className="h-4 w-4" />
+                {showArchived ? "Hide Archived" : "Show Archived"}
+              </Button>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span data-testid="text-sort-label">Newest first</span>
+                <ChevronDown className="h-4 w-4" data-testid="icon-sort" />
+              </div>
             </div>
           </div>
         </div>
@@ -195,6 +271,9 @@ export default function RecordingsPage() {
                       currentTime={currentTime[recording.id] || 0}
                       duration={duration[recording.id] || 0}
                       onSeek={(time) => handleSeek(recording.id, time)}
+                      onArchive={() => handleArchiveClick(recording)}
+                      onUnarchive={() => handleUnarchive(recording.id)}
+                      showArchived={showArchived}
                     />
                   ))}
                 </div>
@@ -203,6 +282,23 @@ export default function RecordingsPage() {
           </div>
         )}
       </main>
+
+      <AlertDialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+        <AlertDialogContent data-testid="dialog-archive-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="text-archive-dialog-title">Archive Recording?</AlertDialogTitle>
+            <AlertDialogDescription data-testid="text-archive-dialog-description">
+              This recording will be archived and hidden from the main list. You can restore it later by viewing archived recordings.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-archive-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmArchive} data-testid="button-archive-confirm">
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -214,9 +310,12 @@ interface RecordingCardProps {
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
+  showArchived: boolean;
 }
 
-function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duration, onSeek }: RecordingCardProps) {
+function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duration, onSeek, onArchive, onUnarchive, showArchived }: RecordingCardProps) {
   const formattedDate = format(new Date(recording.createdAt), "MMM d, yyyy • h:mm a");
   const formattedDuration = formatDuration(recording.duration || 0);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -297,6 +396,27 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
               <Download className="h-4 w-4" data-testid={`icon-download-${recording.id}`} />
             </a>
           </Button>
+          {recording.archived === 1 ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onUnarchive}
+              title="Restore recording"
+              data-testid={`button-unarchive-${recording.id}`}
+            >
+              <ArchiveRestore className="h-4 w-4" data-testid={`icon-unarchive-${recording.id}`} />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onArchive}
+              title="Archive recording"
+              data-testid={`button-archive-${recording.id}`}
+            >
+              <Archive className="h-4 w-4" data-testid={`icon-archive-${recording.id}`} />
+            </Button>
+          )}
         </div>
 
         {isPlaying && duration > 0 && (
