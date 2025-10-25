@@ -1,8 +1,12 @@
 import { type Recording, type InsertRecording, recordings } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool } from "@neondatabase/serverless";
+import { Pool, neonConfig } from "@neondatabase/serverless";
 import { eq, desc } from "drizzle-orm";
+import ws from "ws";
+
+// Configure WebSocket for Neon in Node.js environment
+neonConfig.webSocketConstructor = ws;
 
 export interface IStorage {
   // Recording methods
@@ -11,6 +15,7 @@ export interface IStorage {
   getAllRecordings(includeArchived?: boolean): Promise<Recording[]>;
   createRecording(recording: InsertRecording): Promise<Recording>;
   updateRecordingParticipants(recordingSid: string, participants: number): Promise<void>;
+  updateTranscriptionStatus(recordingSid: string, status: string, transcription?: string): Promise<void>;
   archiveRecording(id: string): Promise<void>;
   unarchiveRecording(id: string): Promise<void>;
 }
@@ -48,6 +53,8 @@ export class MemStorage implements IStorage {
       duration: insertRecording.duration ?? null,
       participants: insertRecording.participants ?? null,
       archived: 0,
+      transcription: null,
+      transcriptionStatus: "pending",
       createdAt: new Date(),
     };
     this.recordings.set(id, recording);
@@ -58,6 +65,17 @@ export class MemStorage implements IStorage {
     const recording = await this.getRecordingByRecordingSid(recordingSid);
     if (recording) {
       recording.participants = participants;
+      this.recordings.set(recording.id, recording);
+    }
+  }
+
+  async updateTranscriptionStatus(recordingSid: string, status: string, transcription?: string): Promise<void> {
+    const recording = await this.getRecordingByRecordingSid(recordingSid);
+    if (recording) {
+      recording.transcriptionStatus = status;
+      if (transcription !== undefined) {
+        recording.transcription = transcription;
+      }
       this.recordings.set(recording.id, recording);
     }
   }
@@ -131,6 +149,17 @@ export class DbStorage implements IStorage {
     await this.db
       .update(recordings)
       .set({ participants })
+      .where(eq(recordings.recordingSid, recordingSid));
+  }
+
+  async updateTranscriptionStatus(recordingSid: string, status: string, transcription?: string): Promise<void> {
+    const updateData: any = { transcriptionStatus: status };
+    if (transcription !== undefined) {
+      updateData.transcription = transcription;
+    }
+    await this.db
+      .update(recordings)
+      .set(updateData)
       .where(eq(recordings.recordingSid, recordingSid));
   }
 

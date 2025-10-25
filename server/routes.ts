@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { getTwilioAccountSid, getTwilioAuthToken } from "./twilio";
+import { TranscriptionService } from "./transcription";
 import axios from "axios";
 
 // Utility: safe XML escaping for TwiML
@@ -17,6 +18,7 @@ const conferenceParticipants = new Map<string, { active: Set<string>; peak: numb
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
+  const transcriptionService = new TranscriptionService();
 
   // GET /api/recordings - List all recordings
   app.get("/api/recordings", async (req, res) => {
@@ -245,6 +247,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         participants: participantCount
       }));
 
+      // Start transcription asynchronously (don't block the webhook response)
+      if (process.env.OPENAI_API_KEY) {
+        transcribeRecordingAsync(transcriptionService, RecordingSid, Buffer.from(audioResp.data)).catch(err => {
+          console.error(`[Transcription] Background error for ${RecordingSid}:`, err);
+        });
+      }
+
       res.sendStatus(200);
     } catch (err: any) {
       console.error("Recording upload error:", err?.response?.data || err?.message || err);
@@ -255,4 +264,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
   return httpServer;
+}
+
+// Async function to transcribe recordings in the background
+async function transcribeRecordingAsync(
+  transcriptionService: TranscriptionService,
+  recordingSid: string,
+  audioBuffer: Buffer
+): Promise<void> {
+  try {
+    // Update status to processing
+    await storage.updateTranscriptionStatus(recordingSid, "processing");
+    
+    console.log(`[Transcription] Starting for ${recordingSid}`);
+    
+    const transcriptionText = await transcriptionService.transcribeRecording(audioBuffer);
+    
+    // Update with completed transcription
+    await storage.updateTranscriptionStatus(recordingSid, "completed", transcriptionText);
+    
+    console.log(`[Transcription] Completed for ${recordingSid}`);
+  } catch (error) {
+    console.error(`[Transcription] Failed for ${recordingSid}:`, error);
+    await storage.updateTranscriptionStatus(recordingSid, "failed");
+  }
 }

@@ -67,6 +67,7 @@ Preferred communication style: Simple, everyday language.
 
 **Database:** PostgreSQL (Neon serverless)
 - Drizzle ORM for type-safe database access
+- WebSocket configuration using `ws` package for Neon serverless driver
 - **DbStorage Implementation:** Production storage layer using database persistence
 - **MemStorage Fallback:** In-memory storage for local development without DATABASE_URL
 - Schema: Single `recordings` table with columns:
@@ -76,6 +77,9 @@ Preferred communication style: Simple, everyday language.
   - `objectPath` (file location in object storage)
   - `duration` (seconds, nullable)
   - `participants` (integer count, default 0)
+  - `archived` (integer flag: 0=active, 1=archived, default 0)
+  - `transcription` (text, nullable - OpenAI Whisper output)
+  - `transcriptionStatus` (text: pending/processing/completed/failed, default pending)
   - `createdAt` (timestamp)
 
 **Storage Pattern:** Hybrid approach with database-first design
@@ -114,12 +118,21 @@ Preferred communication style: Simple, everyday language.
 - Drizzle Kit for schema migrations (`drizzle.config.ts`)
 - Migration files stored in `/migrations` directory
 
+**OpenAI Whisper API:**
+- Automatic transcription of conference recordings
+- Uses `openai` npm package with Whisper-1 model
+- Transcription runs asynchronously after recording upload completes
+- Requires `OPENAI_API_KEY` environment variable
+- Audio files written to temp directory before streaming to OpenAI API
+- Transcription status tracked in database (pending→processing→completed/failed)
+
 **Third-Party Libraries:**
 - **UI Components:** Radix UI primitives (20+ component packages for accessibility)
 - **Styling:** Tailwind CSS with PostCSS processing
 - **Date Handling:** date-fns for temporal grouping (Today, Yesterday, This Week, etc.)
-- **HTTP Client:** Axios for Twilio media downloads
+- **HTTP Client:** Axios for Twilio media downloads and OpenAI API integration
 - **Form Validation:** React Hook Form with Zod resolvers (configured but not actively used)
+- **AI/ML:** OpenAI SDK for Whisper transcription
 
 **Development Tools:**
 - Vite with React plugin for fast development and optimized builds
