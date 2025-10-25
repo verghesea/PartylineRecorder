@@ -1,5 +1,8 @@
-import { type Recording, type InsertRecording } from "@shared/schema";
+import { type Recording, type InsertRecording, recordings } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { Pool } from "@neondatabase/serverless";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Recording methods
@@ -35,8 +38,12 @@ export class MemStorage implements IStorage {
   async createRecording(insertRecording: InsertRecording): Promise<Recording> {
     const id = randomUUID();
     const recording: Recording = {
-      ...insertRecording,
       id,
+      recordingSid: insertRecording.recordingSid,
+      conferenceSid: insertRecording.conferenceSid ?? null,
+      objectPath: insertRecording.objectPath,
+      duration: insertRecording.duration ?? null,
+      participants: insertRecording.participants ?? null,
       createdAt: new Date(),
     };
     this.recordings.set(id, recording);
@@ -52,4 +59,54 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DbStorage implements IStorage {
+  private db;
+
+  constructor() {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    this.db = drizzle(pool);
+  }
+
+  async getRecording(id: string): Promise<Recording | undefined> {
+    const result = await this.db
+      .select()
+      .from(recordings)
+      .where(eq(recordings.id, id))
+      .limit(1);
+    return result[0];
+  }
+
+  async getRecordingByRecordingSid(recordingSid: string): Promise<Recording | undefined> {
+    const result = await this.db
+      .select()
+      .from(recordings)
+      .where(eq(recordings.recordingSid, recordingSid))
+      .limit(1);
+    return result[0];
+  }
+
+  async getAllRecordings(): Promise<Recording[]> {
+    return await this.db
+      .select()
+      .from(recordings)
+      .orderBy(desc(recordings.createdAt));
+  }
+
+  async createRecording(insertRecording: InsertRecording): Promise<Recording> {
+    const result = await this.db
+      .insert(recordings)
+      .values(insertRecording)
+      .returning();
+    return result[0];
+  }
+
+  async updateRecordingParticipants(recordingSid: string, participants: number): Promise<void> {
+    await this.db
+      .update(recordings)
+      .set({ participants })
+      .where(eq(recordings.recordingSid, recordingSid));
+  }
+}
+
+// Use database storage in production, memory storage for development if DATABASE_URL not set
+export const storage = process.env.DATABASE_URL ? new DbStorage() : new MemStorage();

@@ -67,19 +67,22 @@ Preferred communication style: Simple, everyday language.
 
 **Database:** PostgreSQL (Neon serverless)
 - Drizzle ORM for type-safe database access
+- **DbStorage Implementation:** Production storage layer using database persistence
+- **MemStorage Fallback:** In-memory storage for local development without DATABASE_URL
 - Schema: Single `recordings` table with columns:
   - `id` (UUID primary key, auto-generated)
-  - `recordingSid` (Twilio unique identifier, indexed)
-  - `conferenceSid` (Twilio conference identifier)
+  - `recordingSid` (Twilio unique identifier, unique constraint)
+  - `conferenceSid` (Twilio conference identifier, nullable)
   - `objectPath` (file location in object storage)
   - `duration` (seconds, nullable)
   - `participants` (integer count, default 0)
   - `createdAt` (timestamp)
 
-**Storage Pattern:** Hybrid approach with in-memory fallback
+**Storage Pattern:** Hybrid approach with database-first design
 - Interface `IStorage` abstracts storage operations
-- `MemStorage` implementation provides in-memory Map-based storage
-- Production uses database but architecture supports graceful degradation
+- `DbStorage` implementation provides PostgreSQL persistence via Drizzle ORM
+- `MemStorage` fallback for local development without DATABASE_URL
+- Production uses database for recording metadata persistence across restarts
 
 ### Authentication and Authorization
 
