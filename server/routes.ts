@@ -18,11 +18,6 @@ const conferenceParticipants = new Map<string, { active: Set<string>; peak: numb
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
 
-  // Health check
-  app.get("/", (_req, res) => {
-    res.send("Partyline Recorder - OK");
-  });
-
   // GET /api/recordings - List all recordings
   app.get("/api/recordings", async (_req, res) => {
     try {

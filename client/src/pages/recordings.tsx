@@ -122,42 +122,7 @@ export default function RecordingsPage() {
     );
   }
 
-  if (!recordings || recordings.length === 0) {
-    return (
-      <div className="min-h-screen bg-background">
-        <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="container flex h-16 items-center px-6" data-testid="header-main">
-            <div className="flex items-center gap-3">
-              <Phone className="h-6 w-6 text-primary" data-testid="icon-logo" />
-              <h1 className="text-xl font-semibold" data-testid="text-app-title">Partyline Recorder</h1>
-            </div>
-          </div>
-        </header>
-
-        <main className="container max-w-2xl px-6">
-          <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center py-24">
-            <div className="text-center space-y-6" data-testid="empty-state">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <Phone className="h-8 w-8 text-muted-foreground" data-testid="icon-empty-state" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-semibold" data-testid="text-empty-title">No recordings yet</h2>
-                <p className="text-muted-foreground max-w-md" data-testid="text-empty-description">
-                  Dial your toll-free number to start a recorded conference call. 
-                  Recordings appear here automatically after calls end.
-                </p>
-              </div>
-              <div className="pt-4">
-                <Badge variant="secondary" className="text-sm font-mono" data-testid="badge-info">
-                  Up to 15 participants • Auto-recording
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  const showEmptyState = !recordings || recordings.length === 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -193,28 +158,50 @@ export default function RecordingsPage() {
       </div>
 
       <main className="container max-w-7xl px-6 py-12">
-        <div className="space-y-12">
-          {Object.entries(groupedRecordings).map(([group, groupRecordings]) => (
-            <section key={group} className="space-y-4">
-              <h2 className="text-lg font-medium text-foreground sticky top-20 bg-background py-2 z-10" data-testid={`heading-group-${group.toLowerCase().replace(/\s+/g, '-')}`}>
-                {group}
-              </h2>
-              <div className="space-y-3">
-                {groupRecordings.map((recording) => (
-                  <RecordingCard
-                    key={recording.id}
-                    recording={recording}
-                    isPlaying={playingId === recording.id}
-                    onPlayPause={() => handlePlayPause(recording.id, recording.objectPath)}
-                    currentTime={currentTime[recording.id] || 0}
-                    duration={duration[recording.id] || 0}
-                    onSeek={(time) => handleSeek(recording.id, time)}
-                  />
-                ))}
+        {showEmptyState ? (
+          <div className="flex min-h-[calc(100vh-16rem)] items-center justify-center">
+            <div className="text-center space-y-6" data-testid="empty-state">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <Phone className="h-8 w-8 text-muted-foreground" data-testid="icon-empty-state" />
               </div>
-            </section>
-          ))}
-        </div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-semibold" data-testid="text-empty-title">No recordings yet</h2>
+                <p className="text-muted-foreground max-w-md" data-testid="text-empty-description">
+                  Dial your toll-free number to start a recorded conference call. 
+                  Recordings appear here automatically after calls end.
+                </p>
+              </div>
+              <div className="pt-4">
+                <Badge variant="secondary" className="text-sm font-mono" data-testid="badge-info">
+                  Up to 15 participants • Auto-recording
+                </Badge>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-12">
+            {Object.entries(groupedRecordings).map(([group, groupRecordings]) => (
+              <section key={group} className="space-y-4">
+                <h2 className="text-lg font-medium text-foreground sticky top-20 bg-background py-2 z-10" data-testid={`heading-group-${group.toLowerCase().replace(/\s+/g, '-')}`}>
+                  {group}
+                </h2>
+                <div className="space-y-3">
+                  {groupRecordings.map((recording) => (
+                    <RecordingCard
+                      key={recording.id}
+                      recording={recording}
+                      isPlaying={playingId === recording.id}
+                      onPlayPause={() => handlePlayPause(recording.id, recording.objectPath)}
+                      currentTime={currentTime[recording.id] || 0}
+                      duration={duration[recording.id] || 0}
+                      onSeek={(time) => handleSeek(recording.id, time)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </main>
     </div>
   );
