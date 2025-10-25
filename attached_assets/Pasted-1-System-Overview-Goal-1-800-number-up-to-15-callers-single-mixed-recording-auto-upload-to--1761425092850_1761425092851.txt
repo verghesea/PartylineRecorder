@@ -1,0 +1,432 @@
+1) System Overview
+
+Goal: 1-800 number → up to 15 callers → single mixed recording → auto-upload to S3.
+
+Stack:
+
+Telephony: Twilio Programmable Voice (PSTN + Conference + Recording)
+
+App Runtime: Node.js (Express) on Replit (or any HTTPS host)
+
+Storage: AWS S3 (optional lifecycle policies)
+
+Optional: WebRTC (Twilio Voice JS) via /token endpoint
+
+Sequence (happy path):
+
+Caller dials toll-free → Twilio hits POST /voice.
+
+App plays consent (and, if configured, collects 4-digit PIN to set role).
+
+App returns <Conference> TwiML (maxParticipants=15, record-from-start).
+
+Twilio mixes audio; when last participant leaves, Twilio finalizes recording.
+
+Twilio invokes POST /recording-callback with RecordingUrl.
+
+App downloads media and puts *.mp3 into S3.
+
+2) API Endpoints (App Server)
+
+All endpoints accept application/x-www-form-urlencoded from Twilio unless noted.
+
+2.1 POST /voice — Inbound Call Webhook
+
+Purpose: Present consent and (optionally) a role PIN gate, then join conference.
+
+Request (from Twilio): standard Voice webhook form fields, e.g.:
+
+CallSid, From, To, CallStatus, Direction, AccountSid, ApiVersion, CallerCountry, …
+
+Response (TwiML):
+
+(A) With PIN gate (if PIN_SPEAKER or PIN_PRODUCER is set)
+<Response>
+  <Say>This call is recorded. By continuing, you consent to recording.</Say>
+  <Gather input="dtmf" timeout="6" numDigits="4" action="/check-pin">
+    <Say>Enter your four digit PIN, then press pound.</Say>
+  </Gather>
+  <Say>No input received. Goodbye.</Say>
+  <Hangup/>
+</Response>
+
+(B) Without PIN gate
+<Response>
+  <Say>This call is recorded. By continuing, you consent to recording.</Say>
+  <Dial>
+    <Conference
+      beep="onEnter"
+      maxParticipants="15"
+      record="record-from-start"
+      statusCallback="/conf-status"
+      statusCallbackEvent="start end join leave mute hold"
+      recordingStatusCallback="/recording-callback"
+      recordingStatusCallbackEvent="completed"
+      waitUrl="silence">partyline</Conference>
+  </Dial>
+</Response>
+
+
+Notes:
+
+maxParticipants controls party limit (15).
+
+beep="onEnter" is for awareness; switch to "false" if you prefer silent entry.
+
+waitUrl="silence" avoids hold music before 2nd participant joins.
+
+2.2 POST /check-pin — Role Selection
+
+Purpose: Map a 4-digit PIN to role → join muted (producer) or unmuted (speaker).
+
+Request: From Twilio <Gather>, includes Digits.
+
+Response (TwiML):
+
+<Response>
+  <Say>Joining as a producer, you are muted on entry.</Say>
+  <Dial>
+    <Conference
+      beep="onEnter"
+      maxParticipants="15"
+      record="record-from-start"
+      statusCallback="/conf-status"
+      statusCallbackEvent="start end join leave mute hold"
+      recordingStatusCallback="/recording-callback"
+      recordingStatusCallbackEvent="completed"
+      waitUrl="silence" muted="true">partyline</Conference>
+  </Dial>
+</Response>
+
+
+(If Digits == PIN_SPEAKER, omit muted="true". If invalid, play error + hang up.)
+
+2.3 POST /conf-status — Conference Lifecycle (Optional)
+
+Purpose: Lightweight logging/analytics.
+
+Request fields (examples Twilio will send):
+
+StatusCallbackEvent ∈ {start,end,join,leave,mute,hold}
+
+ConferenceSid, FriendlyName (= “partyline”), CallSid (for join/leave), Timestamp, etc.
+
+Response: 200 OK (no body). You can persist JSON logs if desired.
+
+2.4 POST /recording-callback — Recording Finalized
+
+Purpose: Receive final recording pointer, download, upload to S3.
+
+Request fields (examples Twilio will send on “completed”):
+
+RecordingSid, RecordingUrl (no extension), RecordingDuration, ConferenceSid, RecordingChannels (=“mono”), RecordingSource (=“Conference”).
+
+Behavior:
+
+Construct fetch URL as RecordingUrl + ".mp3".
+
+HTTP Basic Auth using TWILIO_ACCOUNT_SID:TWILIO_AUTH_TOKEN.
+
+Upload to S3 with key format:
+
+partyline/{ISO8601_UTC}-{RecordingSid}.mp3
+
+
+Example: partyline/2025-10-25T19-17-43Z-RE1234567890abcdef.mp3
+
+Response: 200 OK upon success. On failure return 5xx (Twilio will retry on non-2xx).
+
+2.5 GET /token — (Optional) WebRTC Token
+
+Purpose: Generate a short-lived Access Token for Twilio Voice JS client so you can join from a browser (by dialing your own toll-free).
+
+Request: None (or require a simple bearer/API key for your own use).
+
+Response (JSON):
+
+{
+  "identity": "web-1a2b3c4d",
+  "token": "<jwt>"
+}
+
+
+Notes:
+
+Token TTL: ~3600s.
+
+The JS client can connect and dial your PSTN number; your /voice then places it into <Conference>.
+
+2.6 GET /health
+
+Purpose: Minimal liveness probe.
+
+Response: 200 OK with "OK".
+
+3) Twilio Configuration
+
+Number (Console → Phone Numbers → Manage → Active numbers):
+
+A CALL COMES IN: Webhook (HTTP POST) → https://<your-app>/voice
+
+Primary handler fails: optional fallback URL → same or static TwiML.
+
+Conference TwiML settings (as returned by your app):
+
+maxParticipants="15"
+
+record="record-from-start"
+
+beep="onEnter" (or "false")
+
+waitUrl="silence" (or to your own music)
+
+statusCallback="/conf-status", statusCallbackEvent="start end join leave mute hold"
+
+recordingStatusCallback="/recording-callback", recordingStatusCallbackEvent="completed"
+
+Debugging:
+
+Twilio Console → Monitor → Logs → Calls/Conferences/Recordings.
+
+4) Environment & Configuration
+
+Required environment variables:
+
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+AWS_ACCESS_KEY_ID=xxxxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxxxx
+AWS_REGION=us-east-1
+S3_BUCKET=partyline-recordings
+
+# Optional (enables role PIN flow)
+PIN_SPEAKER=1234
+PIN_PRODUCER=9876
+
+# Optional (only if using /token for WebRTC)
+TWILIO_API_KEY=SKxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_SECRET=xxxxxxxxxxxxxxxxxxxx
+
+
+Dependencies (Node):
+
+express, body-parser
+
+twilio
+
+axios
+
+@aws-sdk/client-s3
+
+5) Security & Compliance
+5.1 Consent
+
+Always play a recording consent message before joining conference.
+
+For stricter compliance, add a “Press 1 to consent” step; only bridge on 1.
+
+5.2 Transport & Origin
+
+Host over HTTPS.
+
+Optionally validate Twilio requests using the X-Twilio-Signature header.
+
+Signature validation snippet (Node):
+
+import twilio from 'twilio';
+const { validateRequest } = twilio;
+
+function isFromTwilio(req) {
+  const signature = req.headers['x-twilio-signature'];
+  const url = `https://your.public.domain${req.originalUrl}`;
+  return validateRequest(
+    process.env.TWILIO_AUTH_TOKEN,
+    signature,
+    url,
+    req.body
+  );
+}
+
+
+Tip: In early testing you can skip; enable before production.
+
+5.3 S3 IAM (minimum write policy)
+
+Attach to your app’s IAM principal:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:PutObject","s3:PutObjectAcl"],
+    "Resource": "arn:aws:s3:::partyline-recordings/*"
+  }]
+}
+
+5.4 S3 Bucket Settings
+
+Encryption at rest: Enable SSE-S3 or SSE-KMS.
+
+Block public access: ON.
+
+Lifecycle (optional): e.g., expire partyline/* after 90 days.
+
+6) Data & File Conventions
+
+S3 Key:
+
+partyline/{timestampUTC}-{RecordingSid}.mp3
+
+
+timestampUTC = YYYY-MM-DDThh-mm-ssZ (colon/dot replaced for portability)
+
+Example: partyline/2025-10-25T19-17-43Z-RE1234abcd.mp3
+
+Metadata (optional):
+
+Add S3 object metadata if you choose to enrich (e.g., x-amz-meta-duration, x-amz-meta-confSid).
+
+Logs (JSON lines example):
+
+{"ts":"2025-10-25T19:17:43Z","evt":"conf.start","ConferenceSid":"CFxxx","name":"partyline"}
+{"ts":"2025-10-25T19:54:02Z","evt":"recording.ready","RecordingSid":"RExxx","url":"https://api.twilio.com/2010-04-01/Accounts/.../Recordings/RExxx"}
+{"ts":"2025-10-25T19:54:05Z","evt":"s3.put.ok","key":"partyline/2025-10-25T19-54-05Z-RExxx.mp3"}
+
+7) Error Handling & Retries
+
+Webhook responses: Always return 2xx quickly. Do work (downloads/uploads) promptly; if it fails, log and return 5xx so Twilio retries.
+
+Idempotency: Use RecordingSid as an idempotency key. If S3 already contains a key with that RecordingSid, skip re-upload.
+
+Timeouts: Set HTTP client timeouts when fetching Twilio media. If your host is slow, consider offloading upload to a worker/queue (v2).
+
+Note: Twilio will re-attempt webhooks on non-2xx; exact retry behavior can vary—ensuring idempotency avoids duplicates.
+
+8) Capacity & Limits
+
+Participants: capped at 15 via TwiML attribute; increase later if needed.
+
+Rooms: v1 uses a single static room (“partyline”); v2 may add multi-room.
+
+Recording format: fetch .mp3 (compact). Switch to .wav if required (larger).
+
+Concurrency: Toll-free per-minute and recording costs scale linearly with participants.
+
+9) Deployment (Replit)
+
+Create new Node.js Replit project.
+
+Add dependencies:
+
+npm i express body-parser twilio axios @aws-sdk/client-s3
+
+
+Add index.js (your server), package.json start script: "start": "node index.js".
+
+Configure Secrets with all environment variables above.
+
+Run project → note the public HTTPS URL.
+
+In Twilio Console, set the number’s A CALL COMES IN to POST https://<your-repl-url>/voice.
+
+Call the 1-800 number with two phones for verification.
+
+10) Test Plan (v1)
+10.1 Smoke
+
+Dial once, hear consent, call ends if no one else joins after N minutes? (Optional timeout v2.)
+
+Dial with two phones, verify both bridged, beeps heard.
+
+10.2 Recording
+
+After both hang up, confirm:
+
+POST /recording-callback received with RecordingSid and RecordingUrl.
+
+MP3 exists in S3 under partyline/….
+
+Audio is playable and contains both speakers.
+
+10.3 PIN Roles (if enabled)
+
+Enter PIN_PRODUCER: joined muted on entry (verify others can’t hear).
+
+Enter PIN_SPEAKER: joined unmuted.
+
+10.4 Failure paths
+
+Force S3 failure (bad creds), ensure 5xx response from /recording-callback → Twilio retries; fix creds → next retry succeeds, S3 contains file.
+
+Kill app mid-upload, restart, confirm idempotent handling (no duplicate keys).
+
+11) Observability
+
+Logs: Print concise JSON lines for: /voice hit, PIN branch, conference events, recording callback received, S3 upload begin/success/error.
+
+Metrics (optional): counts per day of calls, participants, durations (via RecordingDuration), and upload latency (callback→S3 put).
+
+12) Privacy & Legal
+
+Recording Notice: Always state “This call is recorded…” prior to joining.
+
+Consent Upgrade (optional): “Press 1 to consent” and only bridge on 1.
+
+PII Handling: Avoid logging phone numbers unless necessary; if logged, redact to last 4 digits.
+
+Retention: Apply S3 lifecycle policy (e.g., delete after 90 days) if desired.
+
+13) Future Hooks (v2 Ready)
+
+S3 Event Trigger: S3 ObjectCreated → Lambda queue job:
+
+Normalize audio (ffmpeg), Whisper transcription, diarization (optional), summary, store artifacts adjacent to audio.
+
+Past Sessions Page: List S3 partyline/ keys (signed URLs), show duration from object metadata.
+
+Moderator Console: Small UI to call Twilio Participants API (mute/unmute by CallSid), lock room.
+
+Reference TwiML Blocks (copy-paste)
+
+Conference (no PIN):
+
+<Response>
+  <Say>This call is recorded. By continuing, you consent to recording.</Say>
+  <Dial>
+    <Conference
+      beep="onEnter"
+      maxParticipants="15"
+      record="record-from-start"
+      statusCallback="/conf-status"
+      statusCallbackEvent="start end join leave mute hold"
+      recordingStatusCallback="/recording-callback"
+      recordingStatusCallbackEvent="completed"
+      waitUrl="silence">partyline</Conference>
+  </Dial>
+</Response>
+
+
+PIN Gather:
+
+<Response>
+  <Say>This call is recorded. By continuing, you consent to recording.</Say>
+  <Gather input="dtmf" timeout="6" numDigits="4" action="/check-pin">
+    <Say>Enter your four digit PIN, then press pound.</Say>
+  </Gather>
+  <Say>No input received. Goodbye.</Say>
+  <Hangup/>
+</Response>
+
+
+Join as Producer (muted):
+
+<Response>
+  <Say>Joining as a producer, you are muted on entry.</Say>
+  <Dial>
+    <Conference muted="true" beep="onEnter" maxParticipants="15"
+      record="record-from-start" waitUrl="silence"
+      statusCallback="/conf-status" statusCallbackEvent="start end join leave mute hold"
+      recordingStatusCallback="/recording-callback" recordingStatusCallbackEvent="completed">partyline</Conference>
+  </Dial>
+</Response>

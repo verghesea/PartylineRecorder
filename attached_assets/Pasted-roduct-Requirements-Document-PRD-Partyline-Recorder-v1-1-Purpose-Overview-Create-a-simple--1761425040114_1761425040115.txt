@@ -1,0 +1,234 @@
+roduct Requirements Document (PRD) — Partyline Recorder (v1)
+1. Purpose & Overview
+
+Create a simple, reliable multi-party phone conference line that:
+
+Anyone can call (via a single 1-800 number),
+
+Automatically merges up to 15 callers into a single audio conversation,
+
+Records the session from first join to last hangup, and
+
+Uploads the final mixed recording to AWS S3 for later access.
+
+This tool replaces the friction of scheduling meetings, managing Zoom links, or manually recording — enabling spontaneous, recorded group discussions by phone or browser.
+
+2. Scope (MVP)
+
+In scope
+
+Twilio toll-free number handling incoming calls.
+
+Auto-creation of a conference room (static name: partyline).
+
+Limit of 15 concurrent participants.
+
+Consent announcement before entry.
+
+Optional 4-digit PIN system for “speaker” (unmuted) and “producer” (muted) roles.
+
+Auto-record from first participant join → stop when last leaves.
+
+Upload mixed MP3 file to designated S3 bucket upon completion.
+
+Basic server logs for conference lifecycle and upload status.
+
+Hosted on Replit (Node.js + Express).
+
+Out of scope (for v1)
+
+Whisper transcription or AI summary generation.
+
+Web dashboard for playback or moderation.
+
+Real-time mute/unmute control.
+
+Authentication or user accounts.
+
+Multi-room handling or scheduling.
+
+3. Primary User Stories
+Caller / Participant
+
+As a participant, I can dial a single 1-800 number and immediately join a live call with others.
+
+As a participant, I hear a message that the call is being recorded, so I know consent is required.
+
+As a participant, I may enter a 4-digit PIN if required, which determines my role (speaker or producer).
+
+As a participant, I hear a beep when someone joins or leaves.
+
+Host / Admin (Ajit)
+
+As an admin, I want the recording automatically stored in S3 with timestamp and session ID in the filename.
+
+As an admin, I want to view the logs to verify when a call started, ended, and uploaded successfully.
+
+As an admin, I don’t need to click anything or manage a UI — just call the number.
+
+4. Functional Requirements
+4.1 Twilio Number Configuration
+
+Provider: Twilio
+
+Type: Toll-free (1-800)
+
+Voice webhook: POST https://<app-url>/voice
+
+Request validation: Twilio signature verification (optional in v1)
+
+Max participants: 15
+
+Conference name: “partyline” (static)
+
+Recording: record-from-start
+
+Recording callback: POST https://<app-url>/recording-callback
+
+4.2 Consent and Role Logic
+
+When a call arrives:
+
+System plays a consent announcement.
+
+(If PIN mode is active) System gathers 4 digits.
+
+PIN_SPEAKER → join unmuted
+
+PIN_PRODUCER → join muted
+
+Conference join executed with maxParticipants=15, beep=onEnter.
+
+4.3 Recording & Upload Pipeline
+
+Twilio creates a single mixed audio file.
+
+Format: MP3 (reduced size).
+
+Recording callback receives RecordingUrl and RecordingSid.
+
+App downloads file from Twilio with basic auth.
+
+App uploads file to AWS S3 bucket using credentials from environment variables.
+
+S3 key format:
+
+partyline/{ISO8601_TIMESTAMP}-{RecordingSid}.mp3
+
+
+Log success or error to console.
+
+4.4 System Environment
+Variable	Description
+TWILIO_ACCOUNT_SID	Twilio Account ID
+TWILIO_AUTH_TOKEN	Auth Token for API
+AWS_ACCESS_KEY_ID	IAM credentials
+AWS_SECRET_ACCESS_KEY	IAM credentials
+AWS_REGION	e.g., us-east-1
+S3_BUCKET	Target bucket name
+PIN_SPEAKER	(Optional) 4-digit PIN for unmuted role
+PIN_PRODUCER	(Optional) 4-digit PIN for muted role
+4.5 Logging
+
+Log all incoming call events and conference status callbacks.
+
+Log successful uploads and generated S3 paths.
+
+5. Non-Functional Requirements
+Category	Description
+Reliability	System must handle up to 15 concurrent participants with <1s join latency.
+Availability	Hosted on Replit (always-on plan recommended) or similar always-on host.
+Security	All calls announced as recorded. PIN values stored securely as environment variables.
+Compliance	Include clear recording consent to satisfy U.S. two-party recording laws.
+Storage	Use S3 lifecycle rules to delete files after N days (configurable).
+Performance	Uploads completed within 30 seconds after conference end.
+Scalability	Only one conference supported in v1; future multi-room scaling possible via dynamic names.
+6. Architecture Overview
+Phone/Browser
+     ↓
+ Twilio Number
+     ↓
+ Twilio Webhook → /voice (Express server on Replit)
+     ↓
+ <Conference TwiML> (record-from-start, 15 max)
+     ↓
+ Twilio handles mixing + recording
+     ↓
+ Twilio calls /recording-callback when complete
+     ↓
+ Replit server downloads MP3 → uploads to S3
+     ↓
+ S3 stores /partyline/<timestamp>-<sid>.mp3
+
+
+Optional future flow (v2):
+
+S3 → Lambda (trigger)
+     ↓
+ Whisper transcription → text summary
+     ↓
+ Frontend UI → playback, transcript, moderation
+
+7. User Flow
+
+Caller dials toll-free number.
+
+Twilio hits /voice.
+
+System plays consent message → gathers PIN (if set).
+
+User joins conference (muted or unmuted).
+
+Recording begins when first person joins.
+
+Additional callers join (max 15).
+
+When last caller hangs up:
+
+Twilio finalizes recording.
+
+Sends POST → /recording-callback.
+
+App uploads audio to S3.
+
+Console logs success.
+
+Admin accesses S3 to retrieve the MP3.
+
+8. Future Versions (v2+ Roadmap)
+Feature	Description
+Transcription & Summaries (Whisper)	Automatically transcribe the S3 file, produce text + TL;DR summary, store as .json + .txt next to audio.
+Past Sessions Dashboard	Lightweight webpage that lists stored S3 files with timestamps and playback links.
+Moderator Console	Live web interface to mute/unmute participants, kick users, end recording.
+Multi-Room Support	Dynamic conference names based on PIN or call parameter (e.g., project codes).
+Notification System	Send SMS/email when recording is uploaded and ready.
+Enhanced Security	Require access token or whitelist caller IDs.
+9. Open Questions / Decisions Needed
+
+Recording retention — how long should S3 recordings persist before auto-deletion? (30 days default?)
+
+Legal jurisdiction — should the system include “Press 1 to consent” for strict compliance in all-party states?
+
+Browser join strategy — continue via PSTN dialing, or create a direct WebRTC conference endpoint?
+
+Naming convention — static “partyline” vs. dynamic session naming (e.g., daily rotation)?
+
+Future scaling — is there a need to support >15 callers or simultaneous rooms?
+
+Notifications — should a simple email alert be part of MVP or deferred?
+
+10. Success Criteria (v1)
+Metric	Target
+Join latency	< 2 seconds average
+Recording reliability	100% of sessions produce an S3 file
+Uptime	> 99% (Replit always-on or alternate host)
+Ease of use	No UI or login needed; just dial-in
+Compliance	Consent message plays for all callers
+11. Deliverables
+Deliverable	Description
+index.js	Node/Express app implementing /voice, /check-pin, /recording-callback
+package.json	Dependencies: express, axios, @aws-sdk/client-s3, twilio
+.env	Environment variables for Twilio and AWS credentials
+README.md	Setup guide for Twilio configuration, Replit deployment, S3 setup
+Deployed URL	Public HTTPS endpoint for Twilio webhook
+S3 Bucket	Receives audio files (verified with test call)

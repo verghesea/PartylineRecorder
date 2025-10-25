@@ -1,0 +1,337 @@
+Replit project blurb (use in your project description)
+
+Partyline Recorder (Twilio → S3)
+Dial a single toll-free number, merge up to 15 callers into one “party line,” and auto-record from the first join until the last hangup. When the call ends, the mixed MP3 is uploaded to S3. Optional 4-digit PINs let “speakers” join unmuted and “producers” join muted. Built with Twilio Programmable Voice + Node/Express. No UI needed — just call the number, and your recording appears in S3.
+
+File tree
+/ (Replit root)
+├─ index.js
+├─ package.json
+├─ .env.example
+└─ README.md   (optional; you can put this text there)
+
+package.json
+{
+  "name": "partyline-recorder",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.665.0",
+    "axios": "^1.7.7",
+    "body-parser": "^1.20.3",
+    "express": "^4.19.2",
+    "twilio": "^5.3.5"
+  }
+}
+
+.env.example
+# TWILIO
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# (Optional) PINs to enable role selection via /check-pin
+PIN_SPEAKER=1234
+PIN_PRODUCER=9876
+
+# AWS S3
+AWS_ACCESS_KEY_ID=AKIAxxxxxxxxxxxxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+AWS_REGION=us-east-1
+S3_BUCKET=partyline-recordings
+
+# (Optional) WebRTC token, if you later add browser join
+TWILIO_API_KEY=SKxxxxxxxxxxxxxxxxxxxx
+TWILIO_API_SECRET=xxxxxxxxxxxxxxxxxxxx
+
+index.js
+import express from "express";
+import bodyParser from "body-parser";
+import axios from "axios";
+import crypto from "crypto";
+import { Twilio } from "twilio";
+import twilioLib from "twilio";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const {
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_API_KEY,
+  TWILIO_API_SECRET,
+  AWS_ACCESS_KEY_ID,
+  AWS_SECRET_ACCESS_KEY,
+  AWS_REGION,
+  S3_BUCKET,
+  PIN_SPEAKER,
+  PIN_PRODUCER,
+} = process.env;
+
+const app = express();
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
+const twilioClient = new Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+const s3 = new S3Client({
+  region: AWS_REGION,
+  credentials: { accessKeyId: AWS_ACCESS_KEY_ID, secretAccessKey: AWS_SECRET_ACCESS_KEY },
+});
+
+// Utility: safe XML
+const xml = (s) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+
+// (Optional) Twilio request validation — enable before production.
+function validateTwilio(req) {
+  const signature = req.headers["x-twilio-signature"];
+  const url = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  return twilioLib.validateRequest(TWILIO_AUTH_TOKEN, signature, url, req.body);
+}
+
+// Health
+app.get("/", (_req, res) => res.send("OK"));
+
+// Inbound voice webhook
+app.post("/voice", (req, res) => {
+  // If you want to enforce validation, uncomment:
+  // if (!validateTwilio(req)) return res.status(403).send("Forbidden");
+
+  const usePin = !!(PIN_SPEAKER || PIN_PRODUCER);
+
+  if (usePin) {
+    const twiml = `
+<Response>
+  <Say voice="Polly.Matthew-Neural">This call is recorded. By continuing, you consent to recording.</Say>
+  <Gather input="dtmf" timeout="6" numDigits="4" action="/check-pin">
+    <Say>Enter your four digit PIN, then press pound.</Say>
+  </Gather>
+  <Say>No input received. Goodbye.</Say>
+  <Hangup/>
+</Response>`;
+    res.type("text/xml").send(twiml);
+    return;
+  }
+
+  const twiml = `
+<Response>
+  <Say voice="Polly.Matthew-Neural">This call is recorded. By continuing, you consent to recording.</Say>
+  <Dial>
+    <Conference
+      beep="onEnter"
+      maxParticipants="15"
+      record="record-from-start"
+      waitUrl="silence"
+      statusCallback="/conf-status"
+      statusCallbackEvent="start end join leave mute hold"
+      recordingStatusCallback="/recording-callback"
+      recordingStatusCallbackEvent="completed">partyline</Conference>
+  </Dial>
+</Response>`;
+  res.type("text/xml").send(twiml);
+});
+
+// PIN role check
+app.post("/check-pin", (req, res) => {
+  // if (!validateTwilio(req)) return res.status(403).send("Forbidden");
+  const digits = (req.body.Digits || "").trim();
+  let joinMuted;
+
+  if (digits === PIN_PRODUCER) joinMuted = true;
+  else if (digits === PIN_SPEAKER) joinMuted = false;
+  else {
+    const bad = `
+<Response>
+  <Say>Invalid PIN. Goodbye.</Say>
+  <Hangup/>
+</Response>`;
+    return res.type("text/xml").send(bad);
+  }
+
+  const roleMsg = joinMuted
+    ? "Joining as a producer, you are muted on entry."
+    : "Joining as a speaker.";
+  const mutedAttr = joinMuted ? ` muted="true"` : ``;
+
+  const twiml = `
+<Response>
+  <Say>${xml(roleMsg)}</Say>
+  <Dial>
+    <Conference
+      beep="onEnter"
+      maxParticipants="15"
+      record="record-from-start"
+      waitUrl="silence"
+      statusCallback="/conf-status"
+      statusCallbackEvent="start end join leave mute hold"
+      recordingStatusCallback="/recording-callback"
+      recordingStatusCallbackEvent="completed"${mutedAttr}>partyline</Conference>
+  </Dial>
+</Response>`;
+  res.type("text/xml").send(twiml);
+});
+
+// Optional: log conference lifecycle events
+app.post("/conf-status", (req, res) => {
+  // if (!validateTwilio(req)) return res.status(403).send("Forbidden");
+  const { StatusCallbackEvent, ConferenceSid, FriendlyName, CallSid, Timestamp } = req.body || {};
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      evt: `conf.${StatusCallbackEvent}`,
+      ConferenceSid,
+      FriendlyName,
+      CallSid,
+      at: Timestamp,
+    })
+  );
+  res.sendStatus(200);
+});
+
+// When Twilio finalizes a recording, download + upload to S3
+app.post("/recording-callback", async (req, res) => {
+  // if (!validateTwilio(req)) return res.status(403).send("Forbidden");
+  try {
+    const { RecordingSid, RecordingUrl, ConferenceSid, RecordingDuration } = req.body;
+    if (!RecordingSid || !RecordingUrl) {
+      console.error("Missing recording fields", req.body);
+      return res.sendStatus(400);
+    }
+
+    const fetchUrl = `${RecordingUrl}.mp3`; // Twilio serves mp3/wav when you append extension
+    const authStr = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64");
+
+    const audioResp = await axios.get(fetchUrl, {
+      responseType: "arraybuffer",
+      headers: { Authorization: `Basic ${authStr}` },
+      timeout: 30000,
+    });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const key = `partyline/${timestamp}-${RecordingSid}.mp3`;
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Body: audioResp.data,
+        ContentType: "audio/mpeg",
+        Metadata: {
+          conferencesid: ConferenceSid || "",
+          duration_sec: RecordingDuration || "",
+        },
+      })
+    );
+
+    console.log(JSON.stringify({ ts: new Date().toISOString(), evt: "s3.put.ok", key }));
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("Recording upload error:", err?.response?.data || err?.message || err);
+    // Returning 500 lets Twilio retry the webhook
+    res.sendStatus(500);
+  }
+});
+
+// (Optional) WebRTC token — keep for v2 if you want browser join
+app.get("/token", (req, res) => {
+  try {
+    const AccessToken = twilioLib.jwt.AccessToken;
+    const VoiceGrant = AccessToken.VoiceGrant;
+    const identity = `web-${crypto.randomBytes(4).toString("hex")}`;
+    const token = new AccessToken(TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_SECRET, {
+      identity,
+      ttl: 3600,
+    });
+    token.addGrant(new VoiceGrant({ outgoingApplicationSid: undefined, incomingAllow: true }));
+    res.json({ identity, token: token.toJwt() });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "token failed" });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Partyline server listening on :${PORT}`));
+
+S3 bucket policy (min permissions for the bucket, keep Block Public Access ON)
+
+In AWS → S3 → your bucket → Permissions → Bucket policy (only if you need cross-account writes; otherwise IAM on the app is enough). For your app role/user, ensure it has PutObject to arn:aws:s3:::S3_BUCKET/*. Example IAM policy for the app user/role:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "AllowWriteToPartylinePrefix",
+    "Effect": "Allow",
+    "Action": ["s3:PutObject", "s3:PutObjectAcl"],
+    "Resource": "arn:aws:s3:::partyline-recordings/*"
+  }]
+}
+
+
+Also enable SSE (encryption at rest) and (optional) a Lifecycle rule to expire partyline/* after e.g. 90 days.
+
+Twilio number wiring (one-time)
+
+Buy or select your toll-free number.
+
+A CALL COMES IN → Webhook (HTTP POST) to your Replit URL:
+https://<your-repl-subdomain>.replit.app/voice
+
+Save.
+
+Quick test
+
+In Replit, add environment secrets from .env.example.
+
+Click Run to start the server; copy the public HTTPS URL.
+
+Set the Twilio number’s voice webhook to /voice.
+
+Call the number from two phones; speak; hang up both.
+
+Within a few seconds you should see an object in S3:
+partyline/YYYY-MM-DDThh-mm-ssZ-<RecordingSid>.mp3
+
+Optional “Press 1 to consent” (swap into /voice if you want stricter all-party consent)
+<Response>
+  <Say>This call is recorded. To consent and join, press 1.</Say>
+  <Gather input="dtmf" timeout="6" numDigits="1" action="/consent">
+    <Say>If you do not consent, simply hang up.</Say>
+  </Gather>
+  <Say>No input received. Goodbye.</Say>
+  <Hangup/>
+</Response>
+
+
+And handle /consent by checking Digits == "1" then returning the <Conference> block.
+
+README snippet (you can paste this into Replit’s README)
+
+Partyline Recorder
+
+Dial-in: One toll-free number → everyone drops into the same room (partyline, max 15).
+
+Recording: Mixed track from first join to last hangup.
+
+Storage: MP3 auto-uploaded to S3 under partyline/<timestamp>-<RecordingSid>.mp3.
+
+Roles (optional): 4-digit PINs — speakers (unmuted) vs producers (muted).
+
+Setup
+
+Set Replit secrets from .env.example.
+
+In Twilio, set your number’s voice webhook to POST https://<app-url>/voice.
+
+Create S3 bucket and (optionally) lifecycle policy.
+
+Call the number with two phones → verify S3 file appears.
+
+Notes
+
+Consent message included. For strict all-party states, use the Press 1 to consent flow.
+
+Enable Twilio request validation in index.js when you’re ready (lines marked in comments).
+
+v2 ideas: transcription & summaries (Whisper), session list UI, moderator console, per-participant stems.
