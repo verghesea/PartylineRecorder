@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { getTwilioAccountSid, getTwilioAuthToken } from "./twilio";
+import { getTwilioAccountSid, getTwilioAuthToken, getTwilioFromPhoneNumber } from "./twilio";
 import { TranscriptionService } from "./transcription";
 import axios from "axios";
 
@@ -19,6 +19,17 @@ const conferenceParticipants = new Map<string, { active: Set<string>; peak: numb
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
   const transcriptionService = new TranscriptionService();
+
+  // GET /api/twilio-info - Get Twilio phone number
+  app.get("/api/twilio-info", async (req, res) => {
+    try {
+      const phoneNumber = await getTwilioFromPhoneNumber();
+      res.json({ phoneNumber });
+    } catch (error) {
+      console.error("Error fetching Twilio info:", error);
+      res.status(500).json({ error: "Failed to fetch Twilio information" });
+    }
+  });
 
   // GET /api/recordings - List all recordings
   app.get("/api/recordings", async (req, res) => {
