@@ -103,7 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     // Customize this greeting message as needed
-    const greetingMessage = "This call is recorded. By continuing, you consent to recording.";
+    const greetingMessage = "Welcome to Smiling and Dialing. This is the Operator. You are making a collect call. Please stand by on the line while I connect you to Big Fella and Kahlil.";
     
     const twiml = `
 <Response>
