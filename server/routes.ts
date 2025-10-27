@@ -102,9 +102,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
+    // Customize this greeting message as needed
+    const greetingMessage = "This call is recorded. By continuing, you consent to recording.";
+    
     const twiml = `
 <Response>
-  <Say voice="Polly.Matthew-Neural">This call is recorded. By continuing, you consent to recording.</Say>
+  <Say voice="Polly.Matthew-Neural">${greetingMessage}</Say>
   <Dial>
     <Conference
       beep="onEnter"
