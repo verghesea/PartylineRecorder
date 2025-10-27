@@ -117,6 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       recordingStatusCallbackEvent="completed">partyline</Conference>
   </Dial>
 </Response>`;
+    console.log("Generated TwiML with callbacks:", { baseUrl, statusCallback: `${baseUrl}/conf-status`, recordingCallback: `${baseUrl}/recording-callback` });
     res.type("text/xml").send(twiml);
   });
 
