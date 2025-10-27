@@ -81,6 +81,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // POST /voice - Inbound call webhook from Twilio
   app.post("/voice", (req, res) => {
+    // Get the base URL from the request
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host || req.headers['x-forwarded-host'];
+    const baseUrl = `${protocol}://${host}`;
+    
     const usePin = !!(PIN_SPEAKER || PIN_PRODUCER);
 
     if (usePin) {
@@ -106,9 +111,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       maxParticipants="15"
       record="record-from-start"
       waitUrl=""
-      statusCallback="/conf-status"
+      statusCallback="${baseUrl}/conf-status"
       statusCallbackEvent="start end join leave mute hold"
-      recordingStatusCallback="/recording-callback"
+      recordingStatusCallback="${baseUrl}/recording-callback"
       recordingStatusCallbackEvent="completed">partyline</Conference>
   </Dial>
 </Response>`;
@@ -117,6 +122,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // POST /check-pin - PIN role check
   app.post("/check-pin", (req, res) => {
+    // Get the base URL from the request
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers.host || req.headers['x-forwarded-host'];
+    const baseUrl = `${protocol}://${host}`;
+    
     const digits = (req.body.Digits || "").trim();
     let joinMuted = false;
 
@@ -147,9 +157,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       maxParticipants="15"
       record="record-from-start"
       waitUrl=""
-      statusCallback="/conf-status"
+      statusCallback="${baseUrl}/conf-status"
       statusCallbackEvent="start end join leave mute hold"
-      recordingStatusCallback="/recording-callback"
+      recordingStatusCallback="${baseUrl}/recording-callback"
       recordingStatusCallbackEvent="completed"${mutedAttr}>partyline</Conference>
   </Dial>
 </Response>`;
