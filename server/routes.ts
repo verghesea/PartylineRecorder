@@ -107,7 +107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     const twiml = `
 <Response>
-  <Say voice="Polly.Matthew-Neural">${greetingMessage}</Say>
+  <Say voice="Polly.Emma-Neural">${greetingMessage}</Say>
   <Dial>
     <Conference
       beep="onEnter"
