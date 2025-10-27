@@ -1,0 +1,109 @@
+Voice Settings
+PCI Mode
+Enable PCI Mode on your Accounts to capture payment details using Twilio Programmable Voice. PCI Mode is required for customers that create PCI workflows with Programmable Voice. Enabling PCI Mode on your Account redacts sensitive payment details captured using Twilio Programmable Voice and <Pay>. PCI Mode will automatically store call recordings when recording is enabled on your PCI workflow. To transcribe voice recordings, customers must use the Voice <Transcription> noun, Native and Marketplace transcriptions are not available when PCI Mode is enabled. For more information regarding PCI Mode and Recordings retention policy, please refer to applicable product documentation here.
+
+Once PCI Mode is enabled, it cannot be disabled for that Account. Please see Twilio's Responsibility Matrix and Programmable Voice Documentation to learn more about your obligations when using Programmable Voice in a PCI workflow.
+
+Voice Recording Encryption
+Voice Recording Encryption adds an extra level of security to your account by encrypting all voice recordings with a public key that you provide. These recordings can only be decrypted by you, the holder of the corresponding private key. Learn More
+
+
+Voice Recording Encryption
+Enabled
+Encrypts all call recordings on this account with the public key selected.
+Disabled
+Call recordings on this account will not be encrypted with a customer public key.
+Dual-channel Recording for Conference
+This setting causes all new Conference Recordings to be recorded in dual-channel format by default. The first channel of the Recording’s media file contains the audio of the first Participant that joined the Conference. The second channel of the media file contains all other audio from the call. Please read the Changelog to understand the implications that enabling this setting may have on your application.
+
+
+Dual-channel Recording for Conference
+Enabled
+Conferences are recorded in dual-channel media files
+Disabled
+Conferences are recorded in mono-channel media files
+Request Inspector
+Request Inspector is a tool to debug call flows. It logs the HTTP requests and responses made during the call, including headers, parameters, and body. These logs are stored for 30 days after the call is created. It is recommended to be Enabled when debugging and troubleshooting your TwiML applications.
+
+When Disabled, the Request Inspector does not log any response bodies, and is recommended when you have data compliance requirements around sensitive personal information. Disabling this tool does not delete existing log entries.
+
+
+Request Inspector
+Enabled
+Recommended when debugging and troubleshooting your TwiML applications.
+Disabled
+When disabled, the Request Inspector does not log any response bodies. Recommended when you have data compliance requirements around sensitive personal information. Disabling this tool does not delete existing log entries.
+HTTP Basic Authentication for media access
+In order to protect media access stored at Twilio, you can enforce authentication to access them by enabling HTTP Basic Authentication in your Twilio Account. This setting requires your Twilio Account SID and Auth Token or API Key for all requests to access Voice and Messaging media files, such as recordings and messages' images. Twilio highly recommends enabling HTTP Basic Authentication for your media, especially if it contains sensitive data. Learn more
+
+
+HTTP Basic Authentication for media access
+Enabled
+Media is protected from public access and HTTP Basic Authentication is required to access media urls.
+Disabled
+Media is not protected from public access and anyone with the media url can access it.
+Calls Per Second
+(information)
+Missing Business Profile
+Calls per second (CPS) and concurrent calls are limited by Twilio until a Profile is approved. To remove limitations, create a Business Profile
+
+Outbound calls made using the REST API are throttled and queued to never exceed the CPS value set. Changes made to the CPS value here will update the value in all regions. Default CPS is 1. 
+CPS pricing
+
+Current CPS:
+1
+
+Update CPS
+Voice Recording External Storage
+Voice Recording External Storage allows you to send all Voice Recordings to an external AWS S3 bucket. Enabling Voice Recording External Storage will enable for all regions. However, you will need to update the Voice Recording External Storage settings for each region separately.
+
+
+Voice Recording External Storage
+Enabled
+Disabled
+Predictive and Generative AI/ML Features Addendum
+By enabling any of the features or functionalities within Programmable Voice that are identified as using artificial intelligence or machine learning technology, you acknowledge and agree that your use of these features or functionalities is subject to the terms of the Predictive and Generative AI/ML Features Addendum.
+
+
+Predictive and Generative AI/ML Features Addendum
+Enabled
+Disabled
+Voice Trace
+Once enabled voice trace will begin capturing RTP on all calls for this account until it is disabled. Voice trace captures are stored by Twilio for 10 days. Depending on your use case, your reasons for enabling voice trace, and the laws of the jurisdiction(s) you operate in, you may need to obtain consent from the parties to the call before requesting Twilio to enable voice trace. Please be sure you have all the necessary consents from relevant parties before enabling voice trace. Learn more
+
+
+Voice Trace
+Enabled
+Disabled
+Allow Deprecated SIP/TLS Versions
+If enabled, your SIP endpoints can use the deprecated TLS 1.0 and 1.1 versions for SIP signaling sent to or received from Twilio. If disabled, only non-deprecated versions (TLS 1.2+) are allowed. Attempts to initiate calls over less secure connections will fail. It is highly recommended to disable this setting unless required by your SIP endpoints. Learn more
+
+
+Allow Deprecated SIP/TLS Versions
+Enabled
+Disabled
+24-Hour Maximum Call Duration
+When Enabled, your maximum call duration for your account will be set to 24 hours. When Disabled, the maximum call duration on the account will be 4 hours. This setting applies to both Programmable Voice and Elastic SIP Trunking calls.
+
+
+24-Hour Maximum Call Duration
+Enabled
+Disabled
+Background Noise Passthrough
+If enabled, the background noise of participants who are not speaking is passed through to the audio output. This setting only applies to Conferences with 2 or 3 participants.
+
+
+Background Noise Passthrough
+Enabled
+Disabled
+Beta
+Enable new Google Speech to Text (STT) V2 APIs for <Gather><Speech>
+This will override your <Gather><Speech> TwiML and Studio Gather Widget to use new Google APIs for speech recognition. Learn more
+
+
+Enable new Google Speech to Text (STT) V2 APIs for <Gather><Speech>
+Enabled
+Disabled
+
+Save
+
