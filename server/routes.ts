@@ -113,11 +113,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       beep="onEnter"
       maxParticipants="15"
       record="record-from-start"
+      trim="do-not-trim"
       waitUrl=""
       statusCallback="${baseUrl}/conf-status"
       statusCallbackEvent="start end join leave mute hold"
       recordingStatusCallback="${baseUrl}/recording-callback"
-      recordingStatusCallbackEvent="completed">partyline</Conference>
+      recordingStatusCallbackEvent="completed"
+      recordingStatusCallbackMethod="POST">partyline</Conference>
   </Dial>
 </Response>`;
     console.log("Generated TwiML with callbacks:", { baseUrl, statusCallback: `${baseUrl}/conf-status`, recordingCallback: `${baseUrl}/recording-callback` });
@@ -160,11 +162,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       beep="onEnter"
       maxParticipants="15"
       record="record-from-start"
+      trim="do-not-trim"
       waitUrl=""
       statusCallback="${baseUrl}/conf-status"
       statusCallbackEvent="start end join leave mute hold"
       recordingStatusCallback="${baseUrl}/recording-callback"
-      recordingStatusCallbackEvent="completed"${mutedAttr}>partyline</Conference>
+      recordingStatusCallbackEvent="completed"
+      recordingStatusCallbackMethod="POST"${mutedAttr}>partyline</Conference>
   </Dial>
 </Response>`;
     res.type("text/xml").send(twiml);
