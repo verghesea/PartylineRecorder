@@ -302,7 +302,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.sendStatus(200);
     } catch (err: any) {
-      console.error("Recording upload error:", err?.response?.data || err?.message || err);
+      // Try to extract meaningful error from Twilio response
+      if (err?.response?.data) {
+        const errorData = err.response.data;
+        // If it's a Buffer (XML/JSON error), convert to string
+        const errorText = Buffer.isBuffer(errorData) ? errorData.toString('utf8') : errorData;
+        console.error("Recording upload error - Twilio response:", errorText);
+        console.error("Response status:", err?.response?.status);
+        console.error("Response headers:", err?.response?.headers);
+      } else {
+        console.error("Recording upload error:", err?.message || err);
+      }
       // Returning 500 lets Twilio retry the webhook
       res.sendStatus(500);
     }
