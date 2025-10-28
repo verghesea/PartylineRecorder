@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Phone, Lock } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
@@ -22,11 +22,15 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
+        credentials: "include", // Important: Include cookies for session
       });
 
       if (!response.ok) {
         throw new Error("Invalid password");
       }
+
+      // Invalidate auth status cache so AuthGuard sees we're now authenticated
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth-status"] });
 
       toast({
         title: "Access granted",

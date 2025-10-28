@@ -35,20 +35,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/login", (req, res) => {
     const { password } = req.body;
     
-    console.log("[LOGIN] Attempt received");
-    console.log("[LOGIN] Session ID:", req.sessionID);
-    console.log("[LOGIN] Password configured:", !!DASHBOARD_PASSWORD);
-    console.log("[LOGIN] Password provided:", !!password);
-    
     // If no password is configured, allow access
     if (!DASHBOARD_PASSWORD) {
       req.session.authenticated = true;
       return req.session.save((err) => {
         if (err) {
-          console.error("[LOGIN] Session save error:", err);
+          console.error("Session save error:", err);
           return res.status(500).json({ error: "Session save failed" });
         }
-        console.log("[LOGIN] No password required, session saved");
         res.json({ success: true });
       });
     }
@@ -57,14 +51,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.authenticated = true;
       req.session.save((err) => {
         if (err) {
-          console.error("[LOGIN] Session save error:", err);
+          console.error("Session save error:", err);
           return res.status(500).json({ error: "Session save failed" });
         }
-        console.log("[LOGIN] Password match, session saved successfully");
         res.json({ success: true });
       });
     } else {
-      console.log("[LOGIN] Password mismatch");
       res.status(401).json({ error: "Invalid password" });
     }
   });
@@ -81,16 +73,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/auth-status - Check if authenticated
   app.get("/api/auth-status", (req, res) => {
-    console.log("[AUTH-STATUS] Session ID:", req.sessionID);
-    console.log("[AUTH-STATUS] Authenticated:", req.session?.authenticated);
     res.json({ 
       authenticated: req.session?.authenticated || false,
       passwordRequired: !!DASHBOARD_PASSWORD
     });
   });
 
-  // GET /api/twilio-info - Get Twilio phone number
-  app.get("/api/twilio-info", async (req, res) => {
+  // GET /api/twilio-info - Get Twilio phone number (protected)
+  app.get("/api/twilio-info", requireAuth, async (req, res) => {
     try {
       const phoneNumber = await getTwilioFromPhoneNumber();
       res.json({ phoneNumber });

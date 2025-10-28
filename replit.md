@@ -114,7 +114,22 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication and Authorization
 
-**No User Authentication:** Application has no user login system - web dashboard is publicly accessible
+**Dashboard Authentication:**
+- **DASHBOARD_PASSWORD** environment variable: Shared password protecting web dashboard access
+- **Session Management:** PostgreSQL-backed sessions (connect-pg-simple) with 24-hour cookie expiration
+- **Login Flow:** Users must enter password at `/login` before accessing dashboard
+- **Session Persistence:** Sessions stored in PostgreSQL `session` table, survive server restarts
+- **Security:** httpOnly cookies, secure flag in production, session auto-created in database
+- **Protected Routes:** All dashboard API endpoints require authentication:
+  - `/api/recordings` - Recordings list
+  - `/api/recordings/:id/archive` - Archive functionality
+  - `/api/recordings/:id/unarchive` - Unarchive functionality
+  - `/objects/*` - Audio file streaming
+  - `/api/twilio-info` - Twilio phone number
+- **Public Routes:** Twilio webhooks remain public (no auth required):
+  - `/voice` - Incoming call handler
+  - `/check-pin` - PIN validation
+  - `/recording-callback` - Recording completion webhook
 
 **Caller Authentication (Optional):** 
 - Environment variables `PIN_SPEAKER` and `PIN_PRODUCER` enable 4-digit PIN system
