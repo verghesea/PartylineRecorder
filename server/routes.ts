@@ -13,12 +13,59 @@ const xml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").re
 const PIN_SPEAKER = process.env.PIN_SPEAKER;
 const PIN_PRODUCER = process.env.PIN_PRODUCER;
 
+// Dashboard password configuration
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+
 // Track conference participants - store both active set and peak count
 const conferenceParticipants = new Map<string, { active: Set<string>; peak: number; phoneNumbers: Set<string> }>();
+
+// Authentication middleware
+function requireAuth(req: any, res: any, next: any) {
+  if (req.session?.authenticated) {
+    return next();
+  }
+  res.status(401).json({ error: "Authentication required" });
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
   const transcriptionService = new TranscriptionService();
+
+  // POST /api/login - Dashboard authentication
+  app.post("/api/login", (req, res) => {
+    const { password } = req.body;
+    
+    // If no password is configured, allow access
+    if (!DASHBOARD_PASSWORD) {
+      req.session.authenticated = true;
+      return res.json({ success: true });
+    }
+    
+    if (password === DASHBOARD_PASSWORD) {
+      req.session.authenticated = true;
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ error: "Invalid password" });
+    }
+  });
+
+  // POST /api/logout - Clear session
+  app.post("/api/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Failed to logout" });
+      }
+      res.json({ success: true });
+    });
+  });
+
+  // GET /api/auth-status - Check if authenticated
+  app.get("/api/auth-status", (req, res) => {
+    res.json({ 
+      authenticated: req.session?.authenticated || false,
+      passwordRequired: !!DASHBOARD_PASSWORD
+    });
+  });
 
   // GET /api/twilio-info - Get Twilio phone number
   app.get("/api/twilio-info", async (req, res) => {
@@ -31,8 +78,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/recordings - List all recordings
-  app.get("/api/recordings", async (req, res) => {
+  // GET /api/recordings - List all recordings (protected)
+  app.get("/api/recordings", requireAuth, async (req, res) => {
     try {
       const includeArchived = req.query.includeArchived === 'true';
       const recordings = await storage.getAllRecordings(includeArchived);
@@ -43,8 +90,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/recordings/:id/archive - Archive a recording
-  app.post("/api/recordings/:id/archive", async (req, res) => {
+  // POST /api/recordings/:id/archive - Archive a recording (protected)
+  app.post("/api/recordings/:id/archive", requireAuth, async (req, res) => {
     try {
       await storage.archiveRecording(req.params.id);
       res.json({ success: true });
@@ -54,8 +101,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/recordings/:id/unarchive - Unarchive a recording
-  app.post("/api/recordings/:id/unarchive", async (req, res) => {
+  // POST /api/recordings/:id/unarchive - Unarchive a recording (protected)
+  app.post("/api/recordings/:id/unarchive", requireAuth, async (req, res) => {
     try {
       await storage.unarchiveRecording(req.params.id);
       res.json({ success: true });
@@ -65,8 +112,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /objects/:objectPath - Serve recording files
-  app.get("/objects/:objectPath(*)", async (req, res) => {
+  // GET /objects/:objectPath - Serve recording files (protected)
+  app.get("/objects/:objectPath(*)", requireAuth, async (req, res) => {
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
       await objectStorageService.downloadObject(objectFile, res);
