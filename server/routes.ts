@@ -36,24 +36,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { password } = req.body;
     
     console.log("[LOGIN] Attempt received");
+    console.log("[LOGIN] Session ID:", req.sessionID);
     console.log("[LOGIN] Password configured:", !!DASHBOARD_PASSWORD);
     console.log("[LOGIN] Password provided:", !!password);
-    console.log("[LOGIN] Password length provided:", password?.length);
-    console.log("[LOGIN] Expected password length:", DASHBOARD_PASSWORD?.length);
     
     // If no password is configured, allow access
     if (!DASHBOARD_PASSWORD) {
       req.session.authenticated = true;
-      console.log("[LOGIN] No password required, granting access");
-      return res.json({ success: true });
+      return req.session.save((err) => {
+        if (err) {
+          console.error("[LOGIN] Session save error:", err);
+          return res.status(500).json({ error: "Session save failed" });
+        }
+        console.log("[LOGIN] No password required, session saved");
+        res.json({ success: true });
+      });
     }
     
     if (password === DASHBOARD_PASSWORD) {
       req.session.authenticated = true;
-      console.log("[LOGIN] Password match, granting access");
-      res.json({ success: true });
+      req.session.save((err) => {
+        if (err) {
+          console.error("[LOGIN] Session save error:", err);
+          return res.status(500).json({ error: "Session save failed" });
+        }
+        console.log("[LOGIN] Password match, session saved successfully");
+        res.json({ success: true });
+      });
     } else {
-      console.log("[LOGIN] Password mismatch, denying access");
+      console.log("[LOGIN] Password mismatch");
       res.status(401).json({ error: "Invalid password" });
     }
   });
@@ -70,6 +81,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/auth-status - Check if authenticated
   app.get("/api/auth-status", (req, res) => {
+    console.log("[AUTH-STATUS] Session ID:", req.sessionID);
+    console.log("[AUTH-STATUS] Authenticated:", req.session?.authenticated);
     res.json({ 
       authenticated: req.session?.authenticated || false,
       passwordRequired: !!DASHBOARD_PASSWORD
