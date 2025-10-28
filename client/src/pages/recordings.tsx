@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Recording } from "@shared/schema";
-import { Clock, Users, Download, Play, Pause, Phone, Search, ChevronDown, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { Clock, Users, Download, Play, Pause, Phone, Search, ChevronDown, Archive, ArchiveRestore, Trash2, FileText, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 
 export default function RecordingsPage() {
@@ -319,6 +324,7 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
   const formattedDate = format(new Date(recording.createdAt), "MMM d, yyyy • h:mm a");
   const formattedDuration = formatDuration(recording.duration || 0);
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const [transcriptionOpen, setTranscriptionOpen] = useState(false);
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressBarRef.current || !duration) return;
@@ -330,6 +336,8 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const hasPhoneNumbers = recording.participantPhoneNumbers && recording.participantPhoneNumbers.length > 0;
+  const hasTranscription = recording.transcription && recording.transcriptionStatus === 'completed';
 
   return (
     <Card
@@ -356,6 +364,14 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
             <div className="flex items-center gap-2" data-testid={`text-participants-${recording.id}`}>
               <Users className="h-4 w-4" data-testid={`icon-participants-${recording.id}`} />
               <span>{recording.participants} participant{recording.participants !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+          {hasPhoneNumbers && (
+            <div className="flex items-center gap-2" data-testid={`text-phone-numbers-${recording.id}`}>
+              <Phone className="h-4 w-4" data-testid={`icon-phone-${recording.id}`} />
+              <span className="font-mono text-xs">
+                {recording.participantPhoneNumbers?.join(', ')}
+              </span>
             </div>
           )}
           {recording.conferenceSid && (
@@ -438,6 +454,31 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
               <span data-testid={`text-total-time-${recording.id}`}>{formatTime(duration)}</span>
             </div>
           </div>
+        )}
+
+        {hasTranscription && (
+          <Collapsible open={transcriptionOpen} onOpenChange={setTranscriptionOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start gap-2 text-sm"
+                data-testid={`button-transcription-toggle-${recording.id}`}
+              >
+                <ChevronRight className={`h-4 w-4 transition-transform ${transcriptionOpen ? 'rotate-90' : ''}`} />
+                <FileText className="h-4 w-4" />
+                <span>Transcription</span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3">
+              <div 
+                className="text-sm text-muted-foreground bg-muted/50 rounded-md p-4 whitespace-pre-wrap"
+                data-testid={`text-transcription-${recording.id}`}
+              >
+                {recording.transcription}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </div>
     </Card>

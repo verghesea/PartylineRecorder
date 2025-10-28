@@ -11,6 +11,7 @@ export const recordings = pgTable("recordings", {
   objectPath: text("object_path").notNull(), // Path in object storage
   duration: integer("duration"), // Duration in seconds
   participants: integer("participants").default(0), // Number of participants
+  participantPhoneNumbers: text("participant_phone_numbers").array(), // Array of caller phone numbers
   archived: integer("archived").default(0).notNull(), // Soft delete flag (0=active, 1=archived)
   transcription: text("transcription"), // OpenAI Whisper transcription text
   transcriptionStatus: text("transcription_status").default("pending"), // pending, processing, completed, failed

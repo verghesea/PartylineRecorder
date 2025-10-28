@@ -14,7 +14,7 @@ const PIN_SPEAKER = process.env.PIN_SPEAKER;
 const PIN_PRODUCER = process.env.PIN_PRODUCER;
 
 // Track conference participants - store both active set and peak count
-const conferenceParticipants = new Map<string, { active: Set<string>; peak: number }>();
+const conferenceParticipants = new Map<string, { active: Set<string>; peak: number; phoneNumbers: Set<string> }>();
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
@@ -184,7 +184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // POST /conf-status - Conference lifecycle events
   app.post("/conf-status", (req, res) => {
-    const { StatusCallbackEvent, ConferenceSid, FriendlyName, CallSid, Timestamp } = req.body || {};
+    const { StatusCallbackEvent, ConferenceSid, FriendlyName, CallSid, Timestamp, From } = req.body || {};
     
     console.log(
       JSON.stringify({
@@ -193,14 +193,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ConferenceSid,
         FriendlyName,
         CallSid,
+        From,
         at: Timestamp,
       })
     );
 
-    // Track participants for metadata
+    // Track participants for metadata (including phone numbers)
     if (ConferenceSid) {
       if (!conferenceParticipants.has(ConferenceSid)) {
-        conferenceParticipants.set(ConferenceSid, { active: new Set(), peak: 0 });
+        conferenceParticipants.set(ConferenceSid, { active: new Set(), peak: 0, phoneNumbers: new Set() });
       }
       
       const data = conferenceParticipants.get(ConferenceSid)!;
@@ -208,6 +209,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (StatusCallbackEvent === 'participant-join' && CallSid) {
         data.active.add(CallSid);
         data.peak = Math.max(data.peak, data.active.size);
+        
+        // Capture phone number from "From" field
+        if (From) {
+          data.phoneNumbers.add(From);
+        }
       } else if (StatusCallbackEvent === 'participant-leave' && CallSid) {
         data.active.delete(CallSid);
       }
@@ -287,8 +293,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         audioResp.data
       );
 
-      // Get peak participant count
-      const participantCount = conferenceParticipants.get(ConferenceSid || "")?.peak || 0;
+      // Get peak participant count and phone numbers
+      const confData = conferenceParticipants.get(ConferenceSid || "");
+      const participantCount = confData?.peak || 0;
+      const phoneNumbers = confData?.phoneNumbers ? Array.from(confData.phoneNumbers) : [];
       
       // Save recording metadata
       await storage.createRecording({
@@ -297,6 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         objectPath,
         duration: parseInt(RecordingDuration || "0", 10),
         participants: participantCount,
+        participantPhoneNumbers: phoneNumbers,
       });
 
       // Clean up participant tracking
