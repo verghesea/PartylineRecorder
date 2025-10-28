@@ -25,9 +25,19 @@ Preferred communication style: Simple, everyday language.
 
 **Key Design Decisions:**
 - **Tailwind Configuration:** Custom border radius values (.5625rem, .375rem, .1875rem) and extensive color system with HSL variables for theme support
-- **Typography:** Inter font family for UI elements, JetBrains Mono for technical details
-- **Responsive Layout:** Mobile-first design with breakpoint at 768px, future-ready two-column layout structure for potential transcription features
+- **Typography:** Inter font family for UI elements, JetBrains Mono for technical details and phone numbers
+- **Responsive Layout:** Mobile-first design with breakpoint at 768px
 - **Audio Playback:** In-browser HTML5 Audio elements managed via React state with custom progress controls
+
+**Recording Dashboard Features:**
+- **Participant Tracking:** Displays participant count and phone numbers for each recording
+  - Phone numbers shown with Phone icon in monospace font
+  - Numbers displayed as comma-separated list from participantPhoneNumbers array
+- **AI Transcription Display:** Collapsible transcription section for each recording
+  - Uses shadcn/ui Collapsible component with FileText icon
+  - Chevron icon rotates 90 degrees when expanded
+  - Transcription text displayed with preserved whitespace in muted background panel
+  - Only shown when transcriptionStatus === 'completed'
 
 ### Backend Architecture
 
@@ -90,6 +100,7 @@ Preferred communication style: Simple, everyday language.
   - `objectPath` (file location in object storage)
   - `duration` (seconds, nullable)
   - `participants` (integer count, default 0)
+  - `participantPhoneNumbers` (text array, nullable - captured from Twilio "From" field on join events)
   - `archived` (integer flag: 0=active, 1=archived, default 0)
   - `transcription` (text, nullable - OpenAI Whisper output)
   - `transcriptionStatus` (text: pending/processing/completed/failed, default pending)
