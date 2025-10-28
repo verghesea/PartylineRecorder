@@ -1,0 +1,51 @@
+Short answer: your theory is spot-on. A Twilio conference doesn’t actually “start” (and therefore won’t create a recording) until there are at least **two** bridged participants **and** at least one participant has `startConferenceOnEnter="true"` (i.e., a moderator). With only one caller parked in the room, they’re in the waiting state; no conference recording is created, so no Recording SID and no `recordingStatusCallback`. ([Twilio][1])
+
+Here’s how to resolve + double-check:
+
+1. Force the conference to start (even for test calls)
+
+* Make the first participant a “moderator”: in the TwiML that dials your room, add `startConferenceOnEnter="true"` on the `<Conference>` (or when adding a participant via the Participants API). Then add a second participant (dial your cell or a SIP client) so two people are bridged. Once bridged, Twilio will create the conference recording when `record="record-from-start"` is set. ([Twilio][1])
+
+2. Consider putting the recording callback on `<Dial>` as a fallback
+   There’s an old (but real) workaround: some folks see more reliable callbacks by setting `record` and `recordingStatusCallback` on `<Dial>` that wraps `<Conference>`. If you’ve only put them on `<Conference>`, try mirroring them on `<Dial>` and test again. ([Stack Overflow][2])
+
+3. Trial-account caveat that can block recordings entirely
+   If this project is still on a **trial** Twilio account, be aware: Twilio’s help docs note that **recording incoming calls is not available on trial projects**. Since your scenario is an inbound call to your Twilio number that then joins a conference, this limitation applies—no recordings get created, so no callbacks. Upgrading the project removes this limitation. ([Twilio Help Center][3])
+
+4. Other account-level things that can suppress callbacks (less likely here)
+
+* An **invalid `recordingStatusCallback` URL** causes Twilio to record but skip the webhook (you’d typically see a 13256 warning in logs). Not your case if no recording got created, but worth knowing. ([Twilio][4])
+* **Encryption / external storage** settings affect channel layout (mono vs dual-channel) but don’t stop recordings from being created; you’ve got encryption off anyway. ([Twilio][5])
+
+5. Minimal working recipe to prove the pipeline
+
+* TwiML (key bits):
+
+  ```xml
+  <Dial recordingStatusCallback="https://[replit-url]/recording-callback"
+        recordingStatusCallbackEvent="completed">
+    <Conference
+      startConferenceOnEnter="true"
+      record="record-from-start"
+      trim="do-not-trim">
+      partyline
+    </Conference>
+  </Dial>
+  ```
+* Then, **add a second participant** via the Participants API (to a verified number if still on trial) so the two are bridged. This is what flips the conference into the “started” state and kicks off recording. ([Twilio][6])
+
+Answers to your specific questions
+
+* **Do you need 2 participants?** Practically yes: the recording begins “when the first two participants are bridged.” A lone caller is just waiting—no recording. Make one participant a moderator and bridge a second participant. ([Twilio][1])
+* **Account-level settings that block callbacks?** An invalid callback URL (13256) suppresses the webhook; encryption/external-storage only affects format, not creation. ([Twilio][4])
+* **Trial vs paid?** Trial projects **don’t support recording of inbound calls**; upgrade to enable it. ([Twilio Help Center][3])
+* **Any missing attributes?** Add `startConferenceOnEnter="true"` for at least one participant, ensure `record="record-from-start"`, and (optionally) mirror the recording attributes on `<Dial>`. Then bridge a second participant to trigger the recording (and, after post-processing, the `recordingStatusCallback`). ([Twilio][1])
+
+If you want, I can sketch the exact REST call to programmatically add the second participant (and what the callback payload will look like) based on your current Replit URL.
+
+[1]: https://www.twilio.com/docs/voice/twiml/conference?utm_source=chatgpt.com "TwiML™ Voice: <Conference>"
+[2]: https://stackoverflow.com/questions/50610994/twilio-conference-recordingstatuscallback-url-not-triggering?utm_source=chatgpt.com "Twilio conference recordingStatusCallback URL not ..."
+[3]: https://help.twilio.com/articles/360010317333-Recording-Incoming-Twilio-Voice-Calls?utm_source=chatgpt.com "Recording Incoming Twilio Voice Calls - Twilio Help Center"
+[4]: https://www.twilio.com/docs/api/errors/13256?utm_source=chatgpt.com "13256: Invalid recordingStatusCallback URL"
+[5]: https://www.twilio.com/en-us/changelog/dual-channel-voice-conference-recordings?utm_source=chatgpt.com "Dual-channel Voice Conference Recordings"
+[6]: https://www.twilio.com/docs/voice/api/conference-participant-resource?utm_source=chatgpt.com "Conferences Participants subresource"

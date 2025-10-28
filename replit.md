@@ -50,12 +50,25 @@ Preferred communication style: Simple, everyday language.
 1. Caller dials toll-free number → Twilio invokes `/voice` webhook
 2. Server returns TwiML with consent message and conference join instruction
 3. Twilio creates/joins conference with `record-from-start` enabled
-4. When last participant leaves, Twilio finalizes recording
-5. Twilio invokes `/recording-callback` with recording URL and metadata
-6. Server downloads MP3 from Twilio and uploads to object storage
-7. Metadata persisted to database with object storage path
+4. **IMPORTANT:** Conference recording only starts when at least 2 participants are bridged
+5. When last participant leaves, Twilio finalizes recording
+6. Twilio invokes `/recording-callback` with recording URL and metadata
+7. Server downloads MP3 from Twilio and uploads to object storage
+8. Metadata persisted to database with object storage path
+9. OpenAI Whisper transcription triggered asynchronously
 
 **TwiML Generation:** Server-side XML string construction with proper escaping utility, returns appropriate response based on PIN configuration state.
+
+**Recording Configuration:**
+- Dual recording attributes on both `<Dial>` and `<Conference>` for reliability
+- `startConferenceOnEnter="true"` ensures conference starts with first participant (moderator)
+- `trim="do-not-trim"` preserves full audio including silence
+- Recording callbacks on both Dial and Conference levels for maximum reliability
+
+**Critical Recording Requirements:**
+- ⚠️ **Twilio Trial Accounts:** Recording incoming calls is NOT supported on trial accounts. Must upgrade to paid account.
+- ⚠️ **Minimum Participants:** Conference recordings require at least 2 bridged participants. Single-participant calls will not generate recordings.
+- ✅ **Paid Accounts:** Full recording functionality available with proper TwiML configuration.
 
 ### Data Storage Solutions
 

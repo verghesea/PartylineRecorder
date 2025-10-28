@@ -108,12 +108,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const twiml = `
 <Response>
   <Say voice="Polly.Emma-Neural">${greetingMessage}</Say>
-  <Dial>
+  <Dial
+    record="record-from-start"
+    recordingStatusCallback="${baseUrl}/recording-callback"
+    recordingStatusCallbackEvent="completed">
     <Conference
       beep="onEnter"
       maxParticipants="15"
       record="record-from-start"
       trim="do-not-trim"
+      startConferenceOnEnter="true"
       waitUrl=""
       statusCallback="${baseUrl}/conf-status"
       statusCallbackEvent="start end join leave mute hold"
@@ -157,12 +161,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const twiml = `
 <Response>
   <Say>${xml(roleMsg)}</Say>
-  <Dial>
+  <Dial
+    record="record-from-start"
+    recordingStatusCallback="${baseUrl}/recording-callback"
+    recordingStatusCallbackEvent="completed">
     <Conference
       beep="onEnter"
       maxParticipants="15"
       record="record-from-start"
       trim="do-not-trim"
+      startConferenceOnEnter="true"
       waitUrl=""
       statusCallback="${baseUrl}/conf-status"
       statusCallbackEvent="start end join leave mute hold"
