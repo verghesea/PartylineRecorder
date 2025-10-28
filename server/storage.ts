@@ -52,6 +52,7 @@ export class MemStorage implements IStorage {
       objectPath: insertRecording.objectPath,
       duration: insertRecording.duration ?? null,
       participants: insertRecording.participants ?? null,
+      participantPhoneNumbers: insertRecording.participantPhoneNumbers ?? null,
       archived: 0,
       transcription: null,
       transcriptionStatus: "pending",
