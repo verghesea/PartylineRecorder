@@ -119,6 +119,26 @@ export class ObjectStorageService {
     }
     return objectFile;
   }
+
+  async getPublicFile(filename: string): Promise<File> {
+    // Get the public object search paths from environment
+    const publicPaths = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
+    if (!publicPaths) {
+      throw new Error("PUBLIC_OBJECT_SEARCH_PATHS not configured");
+    }
+
+    // PUBLIC_OBJECT_SEARCH_PATHS contains the bucket path for public files
+    // e.g., "/repl-default-bucket-xyz/public"
+    const publicPath = `${publicPaths}/${filename}`;
+    const { bucketName, objectName } = parseObjectPath(publicPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const objectFile = bucket.file(objectName);
+    const [exists] = await objectFile.exists();
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+    return objectFile;
+  }
 }
 
 function parseObjectPath(path: string): {

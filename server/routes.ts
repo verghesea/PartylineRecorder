@@ -142,8 +142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/public/:filename", async (req, res) => {
     try {
       const filename = req.params.filename;
-      const objectPath = `/public/${filename}`;
-      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+      const objectFile = await objectStorageService.getPublicFile(filename);
       await objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error serving public asset:", error);
