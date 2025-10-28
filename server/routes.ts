@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
-import { getTwilioAccountSid, getTwilioAuthToken, getTwilioFromPhoneNumber } from "./twilio";
+import { getTwilioAccountSid, getTwilioAuthToken, getTwilioFromPhoneNumber, getTwilioApiKey, getTwilioApiKeySecret } from "./twilio";
 import { TranscriptionService } from "./transcription";
 import axios from "axios";
 
@@ -241,26 +241,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.sendStatus(200);
       }
 
-      // Download from Twilio
+      // Download from Twilio using Account SID + Auth Token (standard REST API auth)
       const fetchUrl = `${RecordingUrl}.mp3`;
       const accountSid = await getTwilioAccountSid();
       const authToken = await getTwilioAuthToken();
-      const authStr = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
 
       console.log(`Downloading recording from: ${fetchUrl}`);
 
+      // Use axios auth parameter for proper Basic Auth + handle redirects
       const audioResp = await axios.get(fetchUrl, {
+        auth: { 
+          username: accountSid, 
+          password: authToken 
+        },
         responseType: "arraybuffer",
-        headers: { Authorization: `Basic ${authStr}` },
+        validateStatus: () => true, // Handle all status codes manually
+        maxRedirects: 5, // Follow redirects to media servers
         timeout: 30000,
       });
 
-      // Verify we got audio data, not an error
-      if (audioResp.headers['content-type']?.includes('xml') || audioResp.headers['content-type']?.includes('json')) {
-        const errorText = audioResp.data.toString();
-        console.error(`Twilio returned error instead of MP3:`, errorText);
-        throw new Error(`Twilio error: ${errorText}`);
+      // Check if download was successful
+      if (audioResp.status < 200 || audioResp.status >= 300) {
+        const errorText = Buffer.isBuffer(audioResp.data) 
+          ? audioResp.data.toString('utf8') 
+          : String(audioResp.data);
+        console.error(`Twilio download failed (${audioResp.status}):`, errorText);
+        throw new Error(`Twilio download failed: ${audioResp.status} - ${errorText.slice(0, 200)}`);
       }
+
+      // Verify we got audio data
+      const contentType = audioResp.headers['content-type'] || '';
+      if (!contentType.includes('audio') && !contentType.includes('mpeg')) {
+        const errorText = audioResp.data.toString('utf8');
+        console.error(`Twilio returned non-audio content (${contentType}):`, errorText.slice(0, 500));
+        throw new Error(`Expected audio but got: ${contentType}`);
+      }
+
+      console.log(`✅ Downloaded ${audioResp.data.byteLength} bytes (${contentType})`);
 
       // Upload to object storage
       const objectPath = await objectStorageService.uploadRecording(

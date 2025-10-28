@@ -1,0 +1,110 @@
+Great progress — the XML “error page” is almost certainly Twilio’s REST error response because the download request isn’t authenticated (or is using the wrong SID/account pair). Even with “HTTP Basic Authentication for media: Disabled,” the Recordings REST API URL still requires Basic Auth. That toggle mainly affects the CDN-style media endpoints, not the REST API.
+
+What’s happening
+
+You’re hitting:
+
+https://api.twilio.com/2010-04-01/Accounts/AC.../Recordings/RE...mp3
+
+
+If there’s no (or bad) Basic Auth, Twilio returns an XML <RestException> (401/403/404), which is what you’re seeing as a Buffer.
+
+Fast ways to verify
+
+cURL (gold standard sanity check)
+
+curl -fL -u 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:YOUR_AUTH_TOKEN' \
+  'https://api.twilio.com/2010-04-01/Accounts/ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/Recordings/RE8f922502fdd2d9d7f2f3c6dbce3a9f82.mp3' \
+  --output recording.mp3
+
+
+-u is Basic Auth (AccountSID:AuthToken)
+
+-L follows redirects
+
+If this succeeds, your credentials + SID pairing are correct.
+
+Axios/Node (robust + logs)
+
+import axios from "axios";
+
+const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID!;
+const AUTH_TOKEN  = process.env.TWILIO_AUTH_TOKEN!;
+const RECORDING_SID = "RE8f922502fdd2d9d7f2f3c6dbce3a9f82";
+
+async function downloadRecording() {
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/Recordings/${RECORDING_SID}.mp3`;
+  try {
+    const res = await axios.get(url, {
+      auth: { username: ACCOUNT_SID, password: AUTH_TOKEN },
+      responseType: "arraybuffer",     // ensure we get binary, not text
+      validateStatus: () => true,      // we’ll handle non-2xx manually
+      maxRedirects: 5,
+    });
+
+    if (res.status >= 200 && res.status < 300) {
+      // save res.data (Buffer) to S3 or disk
+      console.log("✅ Downloaded", res.headers["content-type"], res.data.byteLength, "bytes");
+      return res.data;
+    }
+
+    // Decode Twilio XML error body (Buffer -> string) for logs
+    const bodyText = Buffer.isBuffer(res.data)
+      ? res.data.toString("utf8")
+      : String(res.data);
+
+    console.error("❌ Twilio download failed", {
+      status: res.status,
+      headers: res.headers,
+      body: bodyText,
+      url,
+    });
+  } catch (err: any) {
+    console.error("❌ Request error", {
+      message: err.message,
+      code: err.code,
+      stack: err.stack,
+    });
+  }
+}
+
+Common gotchas checklist
+
+Auth required: Always send Basic Auth to the REST API (even if “HTTP Basic for media” is off).
+
+Correct Account SID: The AC... in the URL must match the Account SID you’re authenticating with; a mismatch yields 404 in XML.
+
+Use the callback’s RecordingUrl correctly: Twilio sends RecordingUrl without extension. Append .mp3 or .wav and include Basic Auth.
+
+Processing delay: Right after completed, the asset can take a few seconds to be ready. If you get a 404, retry with exponential backoff (e.g., 1s, 2s, 4s up to ~30s).
+
+Follow redirects: Some regions/tenants redirect to a media host; make sure your HTTP client follows 302/307.
+
+Trial projects: You’re past this since you got a recording SID, but FYI: inbound-recording on trial can be limited; upgraded projects avoid surprises.
+
+Conference SIDs: Make sure you didn’t mix up a CA... call SID with RE... recording SID; only RE works for downloads.
+
+Optional: small retry wrapper (handles 404 “not ready yet”)
+async function waitAndDownload(url: string, auth: {username:string; password:string}, attempts=6) {
+  let delay = 1000;
+  for (let i = 0; i < attempts; i++) {
+    const r = await axios.get(url, {
+      auth,
+      responseType: "arraybuffer",
+      validateStatus: () => true,
+      maxRedirects: 5,
+    });
+    if (r.status >= 200 && r.status < 300) return r.data;
+
+    const body = Buffer.isBuffer(r.data) ? r.data.toString("utf8") : String(r.data);
+    console.warn(`Attempt ${i+1}/${attempts} failed: ${r.status} ${body.slice(0,200)}...`);
+    if (r.status !== 404) break; // only retry on “not ready yet”
+    await new Promise(res => setTimeout(res, delay));
+    delay *= 2;
+  }
+  throw new Error("Recording not downloadable after retries.");
+}
+
+TL;DR fix
+
+Authenticate the download request with Basic Auth (Account SID + Auth Token) and follow redirects. If you still see XML, your logs (now decoding the buffer) will show a Twilio RestException with a code/message—share that code/message and I’ll map it to the exact fix.

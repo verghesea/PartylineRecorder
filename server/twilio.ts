@@ -60,3 +60,13 @@ export async function getTwilioAuthToken() {
   const { authToken } = await getCredentials();
   return authToken;
 }
+
+export async function getTwilioApiKey() {
+  const { apiKey } = await getCredentials();
+  return apiKey;
+}
+
+export async function getTwilioApiKeySecret() {
+  const { apiKeySecret } = await getCredentials();
+  return apiKeySecret;
+}
