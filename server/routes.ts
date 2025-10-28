@@ -35,16 +35,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/login", (req, res) => {
     const { password } = req.body;
     
+    console.log("[LOGIN] Attempt received");
+    console.log("[LOGIN] Password configured:", !!DASHBOARD_PASSWORD);
+    console.log("[LOGIN] Password provided:", !!password);
+    console.log("[LOGIN] Password length provided:", password?.length);
+    console.log("[LOGIN] Expected password length:", DASHBOARD_PASSWORD?.length);
+    
     // If no password is configured, allow access
     if (!DASHBOARD_PASSWORD) {
       req.session.authenticated = true;
+      console.log("[LOGIN] No password required, granting access");
       return res.json({ success: true });
     }
     
     if (password === DASHBOARD_PASSWORD) {
       req.session.authenticated = true;
+      console.log("[LOGIN] Password match, granting access");
       res.json({ success: true });
     } else {
+      console.log("[LOGIN] Password mismatch, denying access");
       res.status(401).json({ error: "Invalid password" });
     }
   });
