@@ -1,0 +1,72 @@
++ Expand All
+POST
+https://784a48c5-b570-4d5f-81a2-2b94103ba8d9-00-2g2ni1mbb1wa.worf.replit.dev/conf-status
+2025-10-27 22:04:29 UTC89ms200
+Request
+URL
+https://784a48c5-b570-4d5f-81a2-2b94103ba8d9-00-2g2ni1mbb1wa.worf.replit.dev/conf-status
+ParametersShow Raw
+Coaching	"false"
+FriendlyName	"partyline"
+SequenceNumber	"1"
+ConferenceSid	"CFac8dc6e011f90bf94bc312156b17d0b1"
+EndConferenceOnExit	"false"
+CallSid	"CA7d497ba24dad47b0b2999684ead173b6"
+StatusCallbackEvent	"participant-join"
+Timestamp	"Mon, 27 Oct 2025 22:04:29 +0000"
+StartConferenceOnEnter	"true"
+Hold	"false"
+AccountSid	"AC155ca9bb04b1e7186e9cd23ed8c8415a"
+Muted	"false"
+Response
+Headers
+Content-Type text/plain; charset=utf-8
+BodyShow Raw
+OK
+POST
+https://784a48c5-b570-4d5f-81a2-2b94103ba8d9-00-2g2ni1mbb1wa.worf.replit.dev/conf-status
+2025-10-27 22:04:41 UTC101ms200
+Request
+URL
+https://784a48c5-b570-4d5f-81a2-2b94103ba8d9-00-2g2ni1mbb1wa.worf.replit.dev/conf-status
+ParametersShow Raw
+Coaching	"false"
+FriendlyName	"partyline"
+EndConferenceOnExit	"false"
+ParticipantCallStatus	"completed"
+StatusCallbackEvent	"participant-leave"
+Timestamp	"Mon, 27 Oct 2025 22:04:41 +0000"
+StartConferenceOnEnter	"true"
+AccountSid	"AC155ca9bb04b1e7186e9cd23ed8c8415a"
+ReasonParticipantLeft	"participant_hung_up"
+SequenceNumber	"2"
+ConferenceSid	"CFac8dc6e011f90bf94bc312156b17d0b1"
+CallSid	"CA7d497ba24dad47b0b2999684ead173b6"
+Hold	"false"
+Muted	"false"
+Response
+Headers
+Content-Type text/plain; charset=utf-8
+BodyShow Raw
+OK
+POST
+https://784a48c5-b570-4d5f-81a2-2b94103ba8d9-00-2g2ni1mbb1wa.worf.replit.dev/conf-status
+2025-10-27 22:04:41 UTC101ms200
+Request
+URL
+https://784a48c5-b570-4d5f-81a2-2b94103ba8d9-00-2g2ni1mbb1wa.worf.replit.dev/conf-status
+ParametersShow Raw
+FriendlyName	"partyline"
+CallSidEndingConference	"CA7d497ba24dad47b0b2999684ead173b6"
+SequenceNumber	"3"
+ReasonConferenceEnded	"last-participant-left"
+ConferenceSid	"CFac8dc6e011f90bf94bc312156b17d0b1"
+StatusCallbackEvent	"conference-end"
+Timestamp	"Mon, 27 Oct 2025 22:04:41 +0000"
+AccountSid	"AC155ca9bb04b1e7186e9cd23ed8c8415a"
+Reason	"All participants dropped out of conference"
+Response
+Headers
+Content-Type text/plain; charset=utf-8
+BodyShow Raw
+OK
