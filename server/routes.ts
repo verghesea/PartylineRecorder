@@ -241,18 +241,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.sendStatus(200);
       }
 
-      // Download from Twilio using Account SID + Auth Token (standard REST API auth)
+      // Download from Twilio using API Key + Secret (Replit connector auth)
+      // Note: Twilio allows API Key authentication for REST API in addition to Auth Token
       const fetchUrl = `${RecordingUrl}.mp3`;
-      const accountSid = await getTwilioAccountSid();
-      const authToken = await getTwilioAuthToken();
+      const apiKey = await getTwilioApiKey();
+      const apiKeySecret = await getTwilioApiKeySecret();
 
       console.log(`Downloading recording from: ${fetchUrl}`);
+      console.log(`Using API Key: ${apiKey?.slice(0, 10)}...`);
 
       // Use axios auth parameter for proper Basic Auth + handle redirects
       const audioResp = await axios.get(fetchUrl, {
         auth: { 
-          username: accountSid, 
-          password: authToken 
+          username: apiKey, 
+          password: apiKeySecret 
         },
         responseType: "arraybuffer",
         validateStatus: () => true, // Handle all status codes manually
