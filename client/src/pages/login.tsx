@@ -29,8 +29,8 @@ export default function LoginPage() {
         throw new Error("Invalid password");
       }
 
-      // Invalidate auth status cache so AuthGuard sees we're now authenticated
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth-status"] });
+      // Refetch auth status to ensure AuthGuard has updated data before redirecting
+      await queryClient.refetchQueries({ queryKey: ["/api/auth-status"] });
 
       toast({
         title: "Access granted",
