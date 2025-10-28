@@ -140,33 +140,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // POST /voice - Inbound call webhook from Twilio
   app.post("/voice", (req, res) => {
-    // Get the base URL from the request
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host || req.headers['x-forwarded-host'];
-    const baseUrl = `${protocol}://${host}`;
-    
-    const usePin = !!(PIN_SPEAKER || PIN_PRODUCER);
+    try {
+      // Get the base URL from the request
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers.host || req.headers['x-forwarded-host'];
+      const baseUrl = `${protocol}://${host}`;
+      
+      console.log("Incoming call to /voice", { protocol, host, baseUrl });
+      
+      // PIN functionality commented out for now
+      // const usePin = !!(PIN_SPEAKER || PIN_PRODUCER);
+      // if (usePin) {
+      //   const twiml = `
+      // <Response>
+      //   <Say voice="Polly.Matthew-Neural">This call is recorded. By continuing, you consent to recording.</Say>
+      //   <Gather input="dtmf" timeout="6" numDigits="4" action="/check-pin">
+      //     <Say>Enter your four digit PIN, then press pound.</Say>
+      //   </Gather>
+      //   <Say>No input received. Goodbye.</Say>
+      //   <Hangup/>
+      // </Response>`;
+      //   res.type("text/xml").send(twiml);
+      //   return;
+      // }
 
-    if (usePin) {
+      // Customize this greeting message as needed
+      const greetingMessage = "Welcome to Smiling and Dialing. This is the Operator. You are making a collect call. Please stand by on the line while I connect you to Big Fella and Kahlil.";
+      
       const twiml = `
 <Response>
-  <Say voice="Polly.Matthew-Neural">This call is recorded. By continuing, you consent to recording.</Say>
-  <Gather input="dtmf" timeout="6" numDigits="4" action="/check-pin">
-    <Say>Enter your four digit PIN, then press pound.</Say>
-  </Gather>
-  <Say>No input received. Goodbye.</Say>
-  <Hangup/>
-</Response>`;
-      res.type("text/xml").send(twiml);
-      return;
-    }
-
-    // Customize this greeting message as needed
-    const greetingMessage = "Welcome to Smiling and Dialing. This is the Operator. You are making a collect call. Please stand by on the line while I connect you to Big Fella and Kahlil.";
-    
-    const twiml = `
-<Response>
-  <Say voice="Polly.Emma-Neural">${greetingMessage}</Say>
+  <Say voice="Polly.Emma-Neural">${xml(greetingMessage)}</Say>
   <Dial
     record="record-from-start"
     recordingStatusCallback="${baseUrl}/recording-callback"
@@ -185,39 +188,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       recordingStatusCallbackMethod="POST">partyline</Conference>
   </Dial>
 </Response>`;
-    console.log("Generated TwiML with callbacks:", { baseUrl, statusCallback: `${baseUrl}/conf-status`, recordingCallback: `${baseUrl}/recording-callback` });
-    res.type("text/xml").send(twiml);
+      console.log("Generated TwiML with callbacks:", { baseUrl, statusCallback: `${baseUrl}/conf-status`, recordingCallback: `${baseUrl}/recording-callback` });
+      res.type("text/xml").send(twiml);
+    } catch (error) {
+      console.error("Error in /voice webhook:", error);
+      // Return a fallback TwiML response instead of crashing
+      const fallbackTwiml = `
+<Response>
+  <Say>Welcome to the conference line. Please hold while we connect you.</Say>
+  <Dial>
+    <Conference>partyline</Conference>
+  </Dial>
+</Response>`;
+      res.type("text/xml").send(fallbackTwiml);
+    }
   });
 
   // POST /check-pin - PIN role check
   app.post("/check-pin", (req, res) => {
-    // Get the base URL from the request
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers.host || req.headers['x-forwarded-host'];
-    const baseUrl = `${protocol}://${host}`;
-    
-    const digits = (req.body.Digits || "").trim();
-    let joinMuted = false;
+    try {
+      // Get the base URL from the request
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers.host || req.headers['x-forwarded-host'];
+      const baseUrl = `${protocol}://${host}`;
+      
+      const digits = (req.body.Digits || "").trim();
+      let joinMuted = false;
 
-    if (digits === PIN_PRODUCER) {
-      joinMuted = true;
-    } else if (digits === PIN_SPEAKER) {
-      joinMuted = false;
-    } else {
-      const bad = `
+      if (digits === PIN_PRODUCER) {
+        joinMuted = true;
+      } else if (digits === PIN_SPEAKER) {
+        joinMuted = false;
+      } else {
+        const bad = `
 <Response>
   <Say>Invalid PIN. Goodbye.</Say>
   <Hangup/>
 </Response>`;
-      return res.type("text/xml").send(bad);
-    }
+        return res.type("text/xml").send(bad);
+      }
 
-    const roleMsg = joinMuted
-      ? "Joining as a producer, you are muted on entry."
-      : "Joining as a speaker.";
-    const mutedAttr = joinMuted ? ` muted="true"` : ``;
+      const roleMsg = joinMuted
+        ? "Joining as a producer, you are muted on entry."
+        : "Joining as a speaker.";
+      const mutedAttr = joinMuted ? ` muted="true"` : ``;
 
-    const twiml = `
+      const twiml = `
 <Response>
   <Say>${xml(roleMsg)}</Say>
   <Dial
@@ -238,7 +254,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       recordingStatusCallbackMethod="POST"${mutedAttr}>partyline</Conference>
   </Dial>
 </Response>`;
-    res.type("text/xml").send(twiml);
+      res.type("text/xml").send(twiml);
+    } catch (error) {
+      console.error("Error in /check-pin webhook:", error);
+      // Return a fallback TwiML response
+      const fallbackTwiml = `
+<Response>
+  <Say>Sorry, there was an error processing your PIN. Connecting you to the conference.</Say>
+  <Dial>
+    <Conference>partyline</Conference>
+  </Dial>
+</Response>`;
+      res.type("text/xml").send(fallbackTwiml);
+    }
   });
 
   // POST /conf-status - Conference lifecycle events
