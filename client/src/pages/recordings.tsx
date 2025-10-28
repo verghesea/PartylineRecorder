@@ -62,7 +62,8 @@ export default function RecordingsPage() {
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth-status"] });
+      // Refetch to ensure fresh unauthenticated state before redirecting
+      await queryClient.refetchQueries({ queryKey: ["/api/auth-status"], exact: true });
       setLocation("/login");
     },
   });
