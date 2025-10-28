@@ -118,6 +118,7 @@ Preferred communication style: Simple, everyday language.
 - **DASHBOARD_PASSWORD** environment variable: Shared password protecting web dashboard access
 - **Session Management:** PostgreSQL-backed sessions (connect-pg-simple) with 24-hour cookie expiration
 - **Login Flow:** Users must enter password at `/login` before accessing dashboard
+- **Logout Flow:** Logout button in header (top-right) calls `/api/logout`, refetches auth status, redirects to `/login`
 - **Session Persistence:** Sessions stored in PostgreSQL `session` table, survive server restarts
 - **Security:** httpOnly cookies, secure flag in production, session auto-created in database
 - **Protected Routes:** All dashboard API endpoints require authentication:
