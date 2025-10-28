@@ -7,6 +7,9 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
+// Trust proxy - required for published sites to work correctly with secure cookies
+app.set('trust proxy', 1);
+
 // PostgreSQL session store for persistent sessions
 const PgSession = connectPgSimple(session);
 const pgPool = new pg.Pool({
