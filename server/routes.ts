@@ -247,11 +247,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const authToken = await getTwilioAuthToken();
       const authStr = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
 
+      console.log(`Downloading recording from: ${fetchUrl}`);
+
       const audioResp = await axios.get(fetchUrl, {
         responseType: "arraybuffer",
         headers: { Authorization: `Basic ${authStr}` },
         timeout: 30000,
       });
+
+      // Verify we got audio data, not an error
+      if (audioResp.headers['content-type']?.includes('xml') || audioResp.headers['content-type']?.includes('json')) {
+        const errorText = audioResp.data.toString();
+        console.error(`Twilio returned error instead of MP3:`, errorText);
+        throw new Error(`Twilio error: ${errorText}`);
+      }
 
       // Upload to object storage
       const objectPath = await objectStorageService.uploadRecording(
