@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Recording } from "@shared/schema";
-import { Clock, Users, Download, Play, Pause, Phone, Search, ChevronDown, Archive, ArchiveRestore, Trash2, FileText, ChevronRight } from "lucide-react";
+import { Clock, Users, Download, Play, Pause, Phone, Search, ChevronDown, Archive, ArchiveRestore, Trash2, FileText, ChevronRight, LogOut } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useState, useRef } from "react";
 import { format, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +27,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 
 export default function RecordingsPage() {
+  const [, setLocation] = useLocation();
   const [showArchived, setShowArchived] = useState(false);
   const { data: recordings, isLoading, error } = useQuery<Recording[]>({
     queryKey: ["/api/recordings", { includeArchived: showArchived }],
@@ -48,6 +50,22 @@ export default function RecordingsPage() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [recordingToArchive, setRecordingToArchive] = useState<Recording | null>(null);
   const { toast } = useToast();
+
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Logout failed");
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth-status"] });
+      setLocation("/login");
+    },
+  });
 
   const archiveMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -149,11 +167,22 @@ export default function RecordingsPage() {
     return (
       <div className="min-h-screen bg-background">
         <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="container flex h-16 items-center px-6" data-testid="header-main">
+          <div className="container flex h-16 items-center justify-between px-6" data-testid="header-main">
             <div className="flex items-center gap-3">
               <Phone className="h-6 w-6 text-primary" data-testid="icon-logo" />
               <h1 className="text-xl font-semibold" data-testid="text-app-title">Partyline Recorder</h1>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              className="gap-2"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
           </div>
         </header>
 
@@ -200,11 +229,22 @@ export default function RecordingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center px-6" data-testid="header-main">
+        <div className="container flex h-16 items-center justify-between px-6" data-testid="header-main">
           <div className="flex items-center gap-3">
             <Phone className="h-6 w-6 text-primary" data-testid="icon-logo" />
             <h1 className="text-xl font-semibold" data-testid="text-app-title">Partyline Recorder</h1>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            className="gap-2"
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4" />
+            Logout
+          </Button>
         </div>
       </header>
 
