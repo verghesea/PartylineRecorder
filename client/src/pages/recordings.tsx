@@ -27,13 +27,17 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function RecordingsPage() {
   const [showArchived, setShowArchived] = useState(false);
-  const { data: recordings, isLoading } = useQuery<Recording[]>({
+  const { data: recordings, isLoading, error } = useQuery<Recording[]>({
     queryKey: ["/api/recordings", { includeArchived: showArchived }],
     queryFn: async () => {
       const url = showArchived ? '/api/recordings?includeArchived=true' : '/api/recordings';
       const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       return response.json();
     },
+    retry: false,
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -71,7 +75,7 @@ export default function RecordingsPage() {
     },
   });
 
-  const filteredRecordings = recordings?.filter((r) => {
+  const filteredRecordings = (recordings || []).filter((r) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     const dateStr = format(new Date(r.createdAt), "MMM d, yyyy h:mm a").toLowerCase();
