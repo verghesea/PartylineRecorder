@@ -138,6 +138,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /public/:filename - Serve public assets (unprotected, for Twilio to access)
+  app.get("/public/:filename", async (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const objectPath = `/public/${filename}`;
+      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+      await objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error serving public asset:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
   // POST /voice - Inbound call webhook from Twilio
   app.post("/voice", (req, res) => {
     try {
@@ -164,12 +180,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       //   return;
       // }
 
-      // Customize this greeting message as needed
+      // Greeting configuration
+      // Option 1: Play an MP3 file from object storage
+      // Upload your greeting.mp3 to the 'public' directory in Object Storage
+      // Then uncomment the line below and set GREETING_AUDIO_FILE to your filename
+      const GREETING_AUDIO_FILE = process.env.GREETING_AUDIO_FILE || ""; // e.g., "greeting.mp3"
+      
+      // Option 2: Use text-to-speech (current default)
       const greetingMessage = "Welcome to Smiling and Dialing. This is the Operator. You are making a collect call. Please stand by on the line while I connect you to Big Fella and Kahlil.";
+      
+      // Generate greeting TwiML (either <Play> or <Say>)
+      let greetingTwiml = "";
+      if (GREETING_AUDIO_FILE) {
+        // Play MP3 file from public directory
+        greetingTwiml = `<Play>${baseUrl}/public/${GREETING_AUDIO_FILE}</Play>`;
+      } else {
+        // Use text-to-speech
+        greetingTwiml = `<Say voice="Polly.Emma-Neural">${xml(greetingMessage)}</Say>`;
+      }
       
       const twiml = `
 <Response>
-  <Say voice="Polly.Emma-Neural">${xml(greetingMessage)}</Say>
+  ${greetingTwiml}
   <Dial
     record="record-from-start"
     recordingStatusCallback="${baseUrl}/recording-callback"
