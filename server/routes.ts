@@ -27,6 +27,9 @@ const conferenceParticipants = new Map<string, {
 // Global mapping: CallSid → ConferenceSid (for DialVerb recordings that don't include ConferenceSid)
 const callSidToConferenceSid = new Map<string, string>();
 
+// Global mapping: CallSid → Phone number (captured during /voice webhook)
+const callSidToPhone = new Map<string, string>();
+
 // Authentication middleware
 function requireAuth(req: any, res: any, next: any) {
   if (req.session?.authenticated) {
@@ -201,7 +204,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const host = req.headers.host || req.headers['x-forwarded-host'];
       const baseUrl = `${protocol}://${host}`;
       
-      console.log("Incoming call to /voice", { protocol, host, baseUrl });
+      // Capture CallSid → Phone number mapping for stem recordings
+      const { CallSid, From } = req.body;
+      if (CallSid && From) {
+        callSidToPhone.set(CallSid, From);
+      }
+      
+      console.log("Incoming call to /voice", { protocol, host, baseUrl, CallSid, From });
       
       // PIN functionality commented out for now
       // const usePin = !!(PIN_SPEAKER || PIN_PRODUCER);
@@ -473,7 +482,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isStemRecording) {
         // Stem recording - individual participant track
-        const phoneNumber = confData?.callSidToPhone.get(CallSid || "") || null;
+        // Use global callSidToPhone map (captured in /voice webhook)
+        const phoneNumber = (CallSid ? callSidToPhone.get(CallSid) : null) || null;
 
         if (!phoneNumber) {
           console.warn(`Stem recording ${RecordingSid}: CallSid ${CallSid} not found in phone mapping`);
