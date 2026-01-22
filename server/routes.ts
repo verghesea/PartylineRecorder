@@ -101,11 +101,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const includeArchived = req.query.includeArchived === 'true';
       const allRecordings = await storage.getAllRecordings(includeArchived);
 
+      console.log('Total recordings from DB:', allRecordings.length);
+      console.log('First recording sample:', allRecordings[0] ? {
+        id: allRecordings[0].id,
+        recordingType: allRecordings[0].recordingType,
+        recordingTypeType: typeof allRecordings[0].recordingType,
+        createdAt: allRecordings[0].createdAt
+      } : 'none');
+
       // Filter to show only mixed recordings (stems appear nested within them)
-      // Also include null for backward compatibility with old recordings
+      // Also include null/undefined for backward compatibility with old recordings
       const mixedRecordings = allRecordings.filter(r =>
-        r.recordingType === 'mixed' || r.recordingType === null
+        r.recordingType === 'mixed' || r.recordingType === null || r.recordingType === undefined
       );
+
+      console.log('Filtered mixed recordings:', mixedRecordings.length);
 
       res.json(mixedRecordings);
     } catch (error) {
@@ -229,22 +239,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 <Response>
   ${greetingTwiml}
   <Dial
-    record="record-from-start"
-    recordingTrack="inbound"
+    record="record-from-answer-dual"
     recordingStatusCallback="${baseUrl}/recording-callback"
     recordingStatusCallbackEvent="completed">
     <Conference
       beep="onEnter"
       maxParticipants="15"
-      record="record-from-start"
       trim="do-not-trim"
       startConferenceOnEnter="true"
       waitUrl=""
       statusCallback="${baseUrl}/conf-status"
-      statusCallbackEvent="start end join leave mute hold"
-      recordingStatusCallback="${baseUrl}/recording-callback"
-      recordingStatusCallbackEvent="completed"
-      recordingStatusCallbackMethod="POST">partyline</Conference>
+      statusCallbackEvent="start end join leave mute hold">partyline</Conference>
   </Dial>
 </Response>`;
       console.log("Generated TwiML with callbacks:", { baseUrl, statusCallback: `${baseUrl}/conf-status`, recordingCallback: `${baseUrl}/recording-callback` });
@@ -296,22 +301,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 <Response>
   <Say>${xml(roleMsg)}</Say>
   <Dial
-    record="record-from-start"
-    recordingTrack="inbound"
+    record="record-from-answer-dual"
     recordingStatusCallback="${baseUrl}/recording-callback"
     recordingStatusCallbackEvent="completed">
     <Conference
       beep="onEnter"
       maxParticipants="15"
-      record="record-from-start"
       trim="do-not-trim"
       startConferenceOnEnter="true"
       waitUrl=""
       statusCallback="${baseUrl}/conf-status"
-      statusCallbackEvent="start end join leave mute hold"
-      recordingStatusCallback="${baseUrl}/recording-callback"
-      recordingStatusCallbackEvent="completed"
-      recordingStatusCallbackMethod="POST"${mutedAttr}>partyline</Conference>
+      statusCallbackEvent="start end join leave mute hold"${mutedAttr}>partyline</Conference>
   </Dial>
 </Response>`;
       res.type("text/xml").send(twiml);
