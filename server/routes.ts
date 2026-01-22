@@ -21,8 +21,11 @@ const conferenceParticipants = new Map<string, {
   active: Set<string>;
   peak: number;
   phoneNumbers: Set<string>;
-  callSidToPhone: Map<string, string>; // NEW: Map CallSid to phone number
+  callSidToPhone: Map<string, string>;
 }>();
+
+// Global mapping: CallSid → ConferenceSid (for DialVerb recordings that don't include ConferenceSid)
+const callSidToConferenceSid = new Map<string, string>();
 
 // Authentication middleware
 function requireAuth(req: any, res: any, next: any) {
@@ -362,10 +365,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data.active.add(CallSid);
         data.peak = Math.max(data.peak, data.active.size);
 
+        // Map CallSid → ConferenceSid for DialVerb recordings
+        callSidToConferenceSid.set(CallSid, ConferenceSid);
+
         // Capture phone number from "From" field and map to CallSid
         if (From) {
           data.phoneNumbers.add(From);
-          data.callSidToPhone.set(CallSid, From); // NEW: Track mapping
+          data.callSidToPhone.set(CallSid, From);
         }
       } else if (StatusCallbackEvent === 'participant-leave' && CallSid) {
         data.active.delete(CallSid);
@@ -460,7 +466,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Detect recording type: stem (from Dial) vs mixed (from Conference)
       const isStemRecording = RecordingSource === "DialVerb" || RecordingTrack === "inbound";
 
-      const confData = conferenceParticipants.get(ConferenceSid || "");
+      // For DialVerb recordings, Twilio doesn't include ConferenceSid - look it up from our mapping
+      const resolvedConferenceSid = ConferenceSid || (CallSid ? callSidToConferenceSid.get(CallSid) : null) || null;
+      
+      const confData = conferenceParticipants.get(resolvedConferenceSid || "");
 
       if (isStemRecording) {
         // Stem recording - individual participant track
@@ -472,7 +481,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         await storage.createRecording({
           recordingSid: RecordingSid,
-          conferenceSid: ConferenceSid || null,
+          conferenceSid: resolvedConferenceSid,
           objectPath,
           duration: parseInt(RecordingDuration || "0", 10),
           participants: 1,
@@ -489,6 +498,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           evt: "storage.upload.stem",
           RecordingSid,
           CallSid,
+          ConferenceSid: resolvedConferenceSid,
           phoneNumber: phoneNumber || "unknown",
           objectPath
         }));
@@ -499,7 +509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         await storage.createRecording({
           recordingSid: RecordingSid,
-          conferenceSid: ConferenceSid || null,
+          conferenceSid: resolvedConferenceSid,
           objectPath,
           duration: parseInt(RecordingDuration || "0", 10),
           participants: participantCount,
@@ -520,8 +530,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }));
 
         // Clean up participant tracking only for mixed recordings
-        if (ConferenceSid) {
-          conferenceParticipants.delete(ConferenceSid);
+        if (resolvedConferenceSid) {
+          conferenceParticipants.delete(resolvedConferenceSid);
         }
       }
 
