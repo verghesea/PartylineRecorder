@@ -103,7 +103,9 @@ export default function RecordingsPage() {
     return dateStr.includes(query) || sidStr.includes(query) || confStr.includes(query);
   }) || [];
 
-  const groupedRecordings = groupRecordingsByDate(filteredRecordings);
+  // Group recordings by conference - one card per conference showing all stems
+  const conferenceGroupedRecordings = groupRecordingsByConference(filteredRecordings);
+  const groupedRecordings = groupRecordingsByDate(conferenceGroupedRecordings);
 
   const handlePlayPause = (recordingId: string, objectPath: string) => {
     // Pause any currently playing audio
@@ -397,6 +399,9 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
   const hasPhoneNumbers = recording.participantPhoneNumbers && recording.participantPhoneNumbers.length > 0;
   const hasTranscription = recording.transcription && recording.transcriptionStatus === 'completed';
+  const hasStems = stems && stems.length > 0;
+  // Show as stem only if it's truly a standalone stem (not representing a conference with multiple stems)
+  const isStandaloneStem = recording.recordingType === 'stem' && !hasStems;
 
   return (
     <Card
@@ -410,13 +415,18 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
               <h3 className="text-base font-medium truncate" data-testid={`text-date-${recording.id}`}>
                 {formattedDate}
               </h3>
-              {recording.recordingType === 'stem' && (
+              {isStandaloneStem && (
                 <Badge variant="outline" className="shrink-0 font-normal">
                   Participant Stem
                 </Badge>
               )}
+              {hasStems && (
+                <Badge variant="default" className="shrink-0 font-normal">
+                  Conference Call
+                </Badge>
+              )}
             </div>
-            {recording.recordingType === 'stem' && recording.callerPhoneNumber && (
+            {isStandaloneStem && recording.callerPhoneNumber && (
               <div className="flex items-center gap-2 text-sm">
                 <Phone className="h-3 w-3 text-muted-foreground" />
                 <span className="font-mono text-muted-foreground">{recording.callerPhoneNumber}</span>
@@ -637,6 +647,36 @@ function StemPlayer({ stem }: StemPlayerProps) {
       </Button>
     </div>
   );
+}
+
+// Group recordings by conference - show one card per conference with all stems inside
+function groupRecordingsByConference(recordings: Recording[]): Recording[] {
+  // Group by ConferenceSid
+  const conferenceMap = new Map<string, Recording[]>();
+  const noConference: Recording[] = [];
+
+  recordings.forEach(recording => {
+    if (recording.conferenceSid) {
+      const existing = conferenceMap.get(recording.conferenceSid) || [];
+      existing.push(recording);
+      conferenceMap.set(recording.conferenceSid, existing);
+    } else {
+      noConference.push(recording);
+    }
+  });
+
+  // For each conference, pick one representative recording
+  const representatives: Recording[] = [];
+
+  conferenceMap.forEach(group => {
+    // Prefer mixed recording if it exists, otherwise use first stem
+    const mixed = group.find(r => r.recordingType === 'mixed' || r.recordingType === null || r.recordingType === undefined);
+    const representative = mixed || group[0];
+    representatives.push(representative);
+  });
+
+  // Include recordings without conference SID
+  return [...representatives, ...noConference];
 }
 
 function groupRecordingsByDate(recordings: Recording[]): Record<string, Recording[]> {
