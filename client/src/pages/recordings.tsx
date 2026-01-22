@@ -405,10 +405,23 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
     >
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-base font-medium truncate" data-testid={`text-date-${recording.id}`}>
-              {formattedDate}
-            </h3>
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-medium truncate" data-testid={`text-date-${recording.id}`}>
+                {formattedDate}
+              </h3>
+              {recording.recordingType === 'stem' && (
+                <Badge variant="outline" className="shrink-0 font-normal">
+                  Participant Stem
+                </Badge>
+              )}
+            </div>
+            {recording.recordingType === 'stem' && recording.callerPhoneNumber && (
+              <div className="flex items-center gap-2 text-sm">
+                <Phone className="h-3 w-3 text-muted-foreground" />
+                <span className="font-mono text-muted-foreground">{recording.callerPhoneNumber}</span>
+              </div>
+            )}
           </div>
           {recording.duration && (
             <Badge variant="secondary" className="shrink-0 font-normal" data-testid={`badge-duration-${recording.id}`}>

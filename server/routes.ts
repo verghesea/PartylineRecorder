@@ -115,15 +115,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: allRecordings[0].createdAt
       } : 'none');
 
-      // Filter to show only mixed recordings (stems appear nested within them)
-      // Also include null/undefined for backward compatibility with old recordings
-      const mixedRecordings = allRecordings.filter(r =>
-        r.recordingType === 'mixed' || r.recordingType === null || r.recordingType === undefined
-      );
-
-      console.log('Filtered mixed recordings:', mixedRecordings.length);
-
-      res.json(mixedRecordings);
+      // Show all recordings (stems and mixed)
+      // This allows viewing individual participant stems directly
+      res.json(allRecordings);
     } catch (error) {
       console.error("Error fetching recordings:", error);
       res.status(500).json({ error: "Failed to fetch recordings" });
