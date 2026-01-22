@@ -2,7 +2,7 @@ import { type Recording, type InsertRecording, recordings } from "@shared/schema
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool, neonConfig } from "@neondatabase/serverless";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, asc, and } from "drizzle-orm";
 import ws from "ws";
 
 // Configure WebSocket for Neon in Node.js environment
@@ -18,6 +18,9 @@ export interface IStorage {
   updateTranscriptionStatus(recordingSid: string, status: string, transcription?: string): Promise<void>;
   archiveRecording(id: string): Promise<void>;
   unarchiveRecording(id: string): Promise<void>;
+  // Multi-track methods
+  getStemsByConferenceSid(conferenceSid: string): Promise<Recording[]>;
+  getMixedRecordingByConferenceSid(conferenceSid: string): Promise<Recording | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -57,6 +60,11 @@ export class MemStorage implements IStorage {
       transcription: null,
       transcriptionStatus: "pending",
       createdAt: new Date(),
+      recordingType: insertRecording.recordingType ?? "mixed",
+      callSid: insertRecording.callSid ?? null,
+      recordingSource: insertRecording.recordingSource ?? null,
+      recordingTrack: insertRecording.recordingTrack ?? null,
+      callerPhoneNumber: insertRecording.callerPhoneNumber ?? null,
     };
     this.recordings.set(id, recording);
     return recording;
@@ -95,6 +103,21 @@ export class MemStorage implements IStorage {
       recording.archived = 0;
       this.recordings.set(id, recording);
     }
+  }
+
+  async getStemsByConferenceSid(conferenceSid: string): Promise<Recording[]> {
+    return Array.from(this.recordings.values())
+      .filter(r => r.conferenceSid === conferenceSid && r.recordingType === 'stem')
+      .sort((a, b) => {
+        const phoneA = a.callerPhoneNumber || '';
+        const phoneB = b.callerPhoneNumber || '';
+        return phoneA.localeCompare(phoneB);
+      });
+  }
+
+  async getMixedRecordingByConferenceSid(conferenceSid: string): Promise<Recording | undefined> {
+    return Array.from(this.recordings.values())
+      .find(r => r.conferenceSid === conferenceSid && r.recordingType === 'mixed');
   }
 }
 
@@ -176,6 +199,33 @@ export class DbStorage implements IStorage {
       .update(recordings)
       .set({ archived: 0 })
       .where(eq(recordings.id, id));
+  }
+
+  async getStemsByConferenceSid(conferenceSid: string): Promise<Recording[]> {
+    return await this.db
+      .select()
+      .from(recordings)
+      .where(
+        and(
+          eq(recordings.conferenceSid, conferenceSid),
+          eq(recordings.recordingType, 'stem')
+        )
+      )
+      .orderBy(asc(recordings.callerPhoneNumber));
+  }
+
+  async getMixedRecordingByConferenceSid(conferenceSid: string): Promise<Recording | undefined> {
+    const result = await this.db
+      .select()
+      .from(recordings)
+      .where(
+        and(
+          eq(recordings.conferenceSid, conferenceSid),
+          eq(recordings.recordingType, 'mixed')
+        )
+      )
+      .limit(1);
+    return result[0];
   }
 }
 

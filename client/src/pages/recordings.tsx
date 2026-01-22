@@ -370,6 +370,20 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
   const formattedDuration = formatDuration(recording.duration || 0);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [transcriptionOpen, setTranscriptionOpen] = useState(false);
+  const [stemsOpen, setStemsOpen] = useState(false);
+
+  // Fetch stems for this recording if it has a conference SID
+  const { data: stems, isLoading: stemsLoading } = useQuery<Recording[]>({
+    queryKey: [`/api/recordings/${recording.id}/stems`],
+    enabled: recording.conferenceSid !== null,
+    queryFn: async () => {
+      const response = await fetch(`/api/recordings/${recording.id}/stems`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    },
+  });
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressBarRef.current || !duration) return;
@@ -516,7 +530,7 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="pt-3">
-              <div 
+              <div
                 className="text-sm text-muted-foreground bg-muted/50 rounded-md p-4 whitespace-pre-wrap"
                 data-testid={`text-transcription-${recording.id}`}
               >
@@ -525,8 +539,90 @@ function RecordingCard({ recording, isPlaying, onPlayPause, currentTime, duratio
             </CollapsibleContent>
           </Collapsible>
         )}
+
+        {stems && stems.length > 0 && (
+          <Collapsible open={stemsOpen} onOpenChange={setStemsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start gap-2 text-sm"
+                data-testid={`button-stems-toggle-${recording.id}`}
+              >
+                <ChevronRight className={`h-4 w-4 transition-transform ${stemsOpen ? 'rotate-90' : ''}`} />
+                <Users className="h-4 w-4" />
+                <span>Multi-track Stems ({stems.length})</span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3 space-y-2">
+              {stems.map(stem => (
+                <StemPlayer key={stem.id} stem={stem} />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </div>
     </Card>
+  );
+}
+
+interface StemPlayerProps {
+  stem: Recording;
+}
+
+function StemPlayer({ stem }: StemPlayerProps) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audio] = useState(() => new Audio(stem.objectPath));
+
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const formattedDuration = formatDuration(stem.duration || 0);
+
+  return (
+    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-md">
+      <Button
+        onClick={handlePlayPause}
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        data-testid={`button-stem-play-${stem.id}`}
+      >
+        {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+      </Button>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <Phone className="h-3 w-3 text-muted-foreground" />
+          <span className="text-sm font-mono">
+            {stem.callerPhoneNumber || 'Unknown'}
+          </span>
+        </div>
+        {stem.duration && (
+          <span className="text-xs text-muted-foreground">
+            {formattedDuration}
+          </span>
+        )}
+      </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        asChild
+        className="shrink-0"
+        data-testid={`button-stem-download-${stem.id}`}
+      >
+        <a href={stem.objectPath} download title="Download stem">
+          <Download className="h-4 w-4" />
+        </a>
+      </Button>
+    </div>
   );
 }
 

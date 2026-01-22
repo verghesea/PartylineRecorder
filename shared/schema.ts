@@ -16,6 +16,12 @@ export const recordings = pgTable("recordings", {
   transcription: text("transcription"), // OpenAI Whisper transcription text
   transcriptionStatus: text("transcription_status").default("pending"), // pending, processing, completed, failed
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Multi-track recording fields
+  recordingType: text("recording_type").default("mixed"), // "mixed" | "stem"
+  callSid: text("call_sid"), // For stem recordings - identifies which participant
+  recordingSource: text("recording_source"), // Twilio's RecordingSource parameter
+  recordingTrack: text("recording_track"), // "inbound" | "outbound" | "both"
+  callerPhoneNumber: text("caller_phone_number"), // Phone number of caller (for stems)
 });
 
 export const insertRecordingSchema = createInsertSchema(recordings).omit({

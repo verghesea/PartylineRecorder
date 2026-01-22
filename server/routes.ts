@@ -17,7 +17,12 @@ const PIN_PRODUCER = process.env.PIN_PRODUCER;
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
 
 // Track conference participants - store both active set and peak count
-const conferenceParticipants = new Map<string, { active: Set<string>; peak: number; phoneNumbers: Set<string> }>();
+const conferenceParticipants = new Map<string, {
+  active: Set<string>;
+  peak: number;
+  phoneNumbers: Set<string>;
+  callSidToPhone: Map<string, string>; // NEW: Map CallSid to phone number
+}>();
 
 // Authentication middleware
 function requireAuth(req: any, res: any, next: any) {
@@ -94,11 +99,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/recordings", requireAuth, async (req, res) => {
     try {
       const includeArchived = req.query.includeArchived === 'true';
-      const recordings = await storage.getAllRecordings(includeArchived);
-      res.json(recordings);
+      const allRecordings = await storage.getAllRecordings(includeArchived);
+
+      // Filter to show only mixed recordings (stems appear nested within them)
+      // Also include null for backward compatibility with old recordings
+      const mixedRecordings = allRecordings.filter(r =>
+        r.recordingType === 'mixed' || r.recordingType === null
+      );
+
+      res.json(mixedRecordings);
     } catch (error) {
       console.error("Error fetching recordings:", error);
       res.status(500).json({ error: "Failed to fetch recordings" });
+    }
+  });
+
+  // GET /api/recordings/:id/stems - Get all stem recordings for a conference (protected)
+  app.get("/api/recordings/:id/stems", requireAuth, async (req, res) => {
+    try {
+      const recording = await storage.getRecording(req.params.id);
+      if (!recording || !recording.conferenceSid) {
+        return res.json([]);
+      }
+      const stems = await storage.getStemsByConferenceSid(recording.conferenceSid);
+      res.json(stems);
+    } catch (error) {
+      console.error("Error fetching stems:", error);
+      res.status(500).json({ error: "Failed to fetch stems" });
     }
   });
 
@@ -203,6 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   ${greetingTwiml}
   <Dial
     record="record-from-start"
+    recordingTrack="inbound"
     recordingStatusCallback="${baseUrl}/recording-callback"
     recordingStatusCallbackEvent="completed">
     <Conference
@@ -269,6 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   <Say>${xml(roleMsg)}</Say>
   <Dial
     record="record-from-start"
+    recordingTrack="inbound"
     recordingStatusCallback="${baseUrl}/recording-callback"
     recordingStatusCallbackEvent="completed">
     <Conference
@@ -319,18 +348,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Track participants for metadata (including phone numbers)
     if (ConferenceSid) {
       if (!conferenceParticipants.has(ConferenceSid)) {
-        conferenceParticipants.set(ConferenceSid, { active: new Set(), peak: 0, phoneNumbers: new Set() });
+        conferenceParticipants.set(ConferenceSid, {
+          active: new Set(),
+          peak: 0,
+          phoneNumbers: new Set(),
+          callSidToPhone: new Map()
+        });
       }
-      
+
       const data = conferenceParticipants.get(ConferenceSid)!;
-      
+
       if (StatusCallbackEvent === 'participant-join' && CallSid) {
         data.active.add(CallSid);
         data.peak = Math.max(data.peak, data.active.size);
-        
-        // Capture phone number from "From" field
+
+        // Capture phone number from "From" field and map to CallSid
         if (From) {
           data.phoneNumbers.add(From);
+          data.callSidToPhone.set(CallSid, From); // NEW: Track mapping
         }
       } else if (StatusCallbackEvent === 'participant-leave' && CallSid) {
         data.active.delete(CallSid);
@@ -343,7 +378,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /recording-callback - When Twilio finalizes a recording
   app.post("/recording-callback", async (req, res) => {
     try {
-      const { RecordingSid, RecordingUrl, ConferenceSid, RecordingDuration } = req.body;
+      const {
+        RecordingSid,
+        RecordingUrl,
+        ConferenceSid,
+        RecordingDuration,
+        CallSid,
+        RecordingSource,
+        RecordingTrack,
+      } = req.body;
       
       if (!RecordingSid || !RecordingUrl) {
         console.error("Missing recording fields", req.body);
@@ -355,6 +398,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         evt: "recording.callback",
         RecordingSid,
         ConferenceSid,
+        CallSid,
+        RecordingSource,
+        RecordingTrack,
         duration: RecordingDuration
       }));
 
@@ -411,33 +457,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         audioResp.data
       );
 
-      // Get peak participant count and phone numbers
+      // Detect recording type: stem (from Dial) vs mixed (from Conference)
+      const isStemRecording = RecordingSource === "DialVerb" || RecordingTrack === "inbound";
+
       const confData = conferenceParticipants.get(ConferenceSid || "");
-      const participantCount = confData?.peak || 0;
-      const phoneNumbers = confData?.phoneNumbers ? Array.from(confData.phoneNumbers) : [];
-      
-      // Save recording metadata
-      await storage.createRecording({
-        recordingSid: RecordingSid,
-        conferenceSid: ConferenceSid || null,
-        objectPath,
-        duration: parseInt(RecordingDuration || "0", 10),
-        participants: participantCount,
-        participantPhoneNumbers: phoneNumbers,
-      });
 
-      // Clean up participant tracking
-      if (ConferenceSid) {
-        conferenceParticipants.delete(ConferenceSid);
+      if (isStemRecording) {
+        // Stem recording - individual participant track
+        const phoneNumber = confData?.callSidToPhone.get(CallSid || "") || null;
+
+        if (!phoneNumber) {
+          console.warn(`Stem recording ${RecordingSid}: CallSid ${CallSid} not found in phone mapping`);
+        }
+
+        await storage.createRecording({
+          recordingSid: RecordingSid,
+          conferenceSid: ConferenceSid || null,
+          objectPath,
+          duration: parseInt(RecordingDuration || "0", 10),
+          participants: 1,
+          participantPhoneNumbers: phoneNumber ? [phoneNumber] : [],
+          recordingType: "stem",
+          callSid: CallSid,
+          recordingSource: RecordingSource,
+          recordingTrack: RecordingTrack,
+          callerPhoneNumber: phoneNumber,
+        });
+
+        console.log(JSON.stringify({
+          ts: new Date().toISOString(),
+          evt: "storage.upload.stem",
+          RecordingSid,
+          CallSid,
+          phoneNumber: phoneNumber || "unknown",
+          objectPath
+        }));
+      } else {
+        // Mixed recording - full conference audio
+        const participantCount = confData?.peak || 0;
+        const phoneNumbers = confData?.phoneNumbers ? Array.from(confData.phoneNumbers) : [];
+
+        await storage.createRecording({
+          recordingSid: RecordingSid,
+          conferenceSid: ConferenceSid || null,
+          objectPath,
+          duration: parseInt(RecordingDuration || "0", 10),
+          participants: participantCount,
+          participantPhoneNumbers: phoneNumbers,
+          recordingType: "mixed",
+          callSid: CallSid || null,
+          recordingSource: RecordingSource,
+          recordingTrack: RecordingTrack || null,
+          callerPhoneNumber: null,
+        });
+
+        console.log(JSON.stringify({
+          ts: new Date().toISOString(),
+          evt: "storage.upload.mixed",
+          RecordingSid,
+          objectPath,
+          participants: participantCount
+        }));
+
+        // Clean up participant tracking only for mixed recordings
+        if (ConferenceSid) {
+          conferenceParticipants.delete(ConferenceSid);
+        }
       }
-
-      console.log(JSON.stringify({
-        ts: new Date().toISOString(),
-        evt: "storage.upload.ok",
-        RecordingSid,
-        objectPath,
-        participants: participantCount
-      }));
 
       // Start transcription asynchronously (don't block the webhook response)
       if (process.env.OPENAI_API_KEY) {
